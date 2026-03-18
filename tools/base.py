@@ -20,6 +20,12 @@ class Tool(ABC):
     description: str = ""
     schema: Dict[str, Any] = {}
 
+    def success(self, output: str) -> Dict[str, Any]:
+        return {"status": "success", "tool": self.name, "output": output}
+
+    def error(self, message: str) -> Dict[str, Any]:
+        return {"status": "error", "tool": self.name, "message": message}
+
     @abstractmethod
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
         """
