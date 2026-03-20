@@ -33,6 +33,16 @@ class Memory:
         """Return conversation history."""
         return self.history
 
+    def add_raw_message(self, message: dict) -> None:
+        """
+        Append a fully-formed message dict (any role, e.g. 'tool').
+        Used for function-calling tool results that require extra fields
+        like tool_call_id which the simple add_*_message helpers don't support.
+        """
+        self.history.append(message)
+        if len(self.history) > self.max_messages:
+            self.history = self.history[-self.max_messages :]
+
     def _add(self, role: str, content: Any) -> None:
         """Internal: add message and trim if over max."""
         self.history.append({"role": role, "content": content})

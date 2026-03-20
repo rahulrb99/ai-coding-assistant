@@ -3,7 +3,11 @@ Prompt Builder — Person 5
 Person 1 calls build(system_prompt, tools, history, user_input).
 Returns messages in OpenAI chat format.
 """
-from typing import Any, List
+from typing import List
+
+# Keep the last N messages when history grows too long.
+# System message is always pinned and never truncated.
+MAX_HISTORY_MESSAGES = 20
 
 
 def build(
@@ -13,16 +17,23 @@ def build(
     user_input: str,
 ) -> List[dict]:
     """
-    Build the LLM prompt. Person 1 calls this.
+    Build the LLM prompt in the required order:
+      1. System instructions (always pinned, never truncated)
+      2. Conversation history (sliding window, oldest dropped first)
 
-    Order: (1) System instructions, (2) Tool definitions, (3) History, (4) User request.
-    Returns: messages (list of {"role": str, "content": str} in OpenAI chat format)
+    Tools are passed separately to the provider via function calling
+    and are NOT embedded as messages.
+
+    Returns: List of {"role": str, "content": str} in OpenAI chat format.
     """
-    # TODO: Assemble in order: system, tools, history, user_input
-    # TODO: Truncate history if needed (older first)
-    # TODO: Reduce RAG chunks if still over limit
-    # TODO: Return List[dict] e.g. [{"role":"system","content":"..."}, ...]
-    pass
+    # 1. System message — always first, never removed
+    messages: List[dict] = [{"role": "system", "content": system_prompt}]
+
+    # 2. Truncate history if it exceeds the sliding window
+    truncated = history[-MAX_HISTORY_MESSAGES:] if len(history) > MAX_HISTORY_MESSAGES else history
+
+    messages.extend(truncated)
+    return messages
 
 
 # Alias for backward compatibility
