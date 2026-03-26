@@ -143,7 +143,12 @@ class _MCPServerConnection:
         """Return current session, connecting if necessary. Thread-safe."""
         with self._lock:
             if self._session is None:
-                self._session = _bridge.run(self._connect_async())
+                # Some servers (notably custom_rag) may take a while on first boot
+                # due to heavy imports / model initialization.
+                timeout = 30.0
+                if self._label in ("custom_rag", "filesystem"):
+                    timeout = 180.0
+                self._session = _bridge.run(self._connect_async(), timeout=timeout)
             return self._session
 
     def invalidate(self) -> None:
