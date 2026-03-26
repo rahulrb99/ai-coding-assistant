@@ -30,23 +30,27 @@ def _setup_logging() -> None:
     log_dir.mkdir(exist_ok=True)
 
     root = logging.getLogger()
-    # Avoid adding duplicate handlers if logging was already configured
-    if root.handlers:
-        return
 
-    root.setLevel(logging.INFO)
-    fmt = logging.Formatter("%(asctime)s [%(name)s] %(message)s")
+    # Only add handlers once — but ALWAYS apply the suppression below
+    if not root.handlers:
+        root.setLevel(logging.INFO)
+        fmt = logging.Formatter("%(asctime)s [%(name)s] %(message)s")
 
-    file_handler = logging.FileHandler(log_dir / "agent.log", encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(fmt)
+        file_handler = logging.FileHandler(log_dir / "agent.log", encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(fmt)
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.WARNING)
-    console_handler.setFormatter(fmt)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.WARNING)
+        console_handler.setFormatter(fmt)
 
-    root.addHandler(file_handler)
-    root.addHandler(console_handler)
+        root.addHandler(file_handler)
+        root.addHandler(console_handler)
+
+    # Always suppress third-party INFO noise from the terminal regardless of
+    # whether handlers were already configured (some libs add handlers on import).
+    for noisy in ("httpx", "httpcore", "mcp_client", "mcp.mcp_client", "mcp", "anyio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def _build_provider(settings: dict):
@@ -65,11 +69,11 @@ def _build_provider(settings: dict):
     if provider_name == "ollama":
         try:
             from providers.ollama_provider import OllamaProvider
-            return OllamaProvider(model=settings["model_name"])
-        except ImportError:
-            logging.getLogger("AGENT").warning(
-                "OllamaProvider not yet implemented. Using MockProvider."
-            )
+            import os
+            base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            return OllamaProvider(model=settings["model_name"], base_url=base_url)
+        except ImportError as exc:
+            logging.getLogger("AGENT").warning("OllamaProvider unavailable: %s", exc)
 
     # Fallback mock when provider is not ready or key not set
     from agent.mocks import MockProvider
@@ -81,24 +85,37 @@ def _build_provider(settings: dict):
 
 def _load_mcp_tools(registry: ToolRegistry, settings: dict) -> None:
     """Connect to MCP servers and load their tools into the registry. Non-fatal on failure."""
+    # Re-apply suppression here — mcp package can re-add handlers during async startup
+    for noisy in ("httpx", "httpcore", "mcp_client", "mcp.mcp_client", "mcp", "anyio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     try:
         from rich.console import Console
-        Console().print("  [dim]Connecting to MCP servers...[/dim]")
+        from rich.table import Table
+        _con = Console()
+        _con.print("  [dim]Connecting to MCP servers...[/dim]")
         mcp = MCPClient(registry=registry)
         mcp.connect_and_load()
-        tool_names = registry.list_tools()
-        mcp_tools = [t for t in tool_names if t not in {
-            "read_file", "write_file", "edit_file", "run_shell", "search_codebase"
-        }]
-        if mcp_tools:
-            from rich.console import Console
-            Console().print(
-                f"  [bold green]MCP:[/bold green] {len(mcp_tools)} server tool(s) loaded: "
-                f"[dim]{', '.join(mcp_tools)}[/dim]"
-            )
-        else:
-            from rich.console import Console
-            Console().print("  [dim]MCP: No server tools loaded (servers may be unavailable).[/dim]")
+
+        table = Table(title="MCP Servers", border_style="dim", show_lines=False)
+        table.add_column("Server", style="cyan", no_wrap=True)
+        table.add_column("Tools", justify="right")
+        table.add_column("Status", justify="left")
+
+        total = 0
+        for server, count in mcp.server_stats.items():
+            total += count
+            if count > 0:
+                status = "[bold green]✓ connected[/bold green]"
+            else:
+                status = "[dim]✗ unavailable[/dim]"
+            table.add_row(server, str(count), status)
+
+        if not mcp.server_stats:
+            table.add_row("[dim]none[/dim]", "0", "[dim]no servers configured[/dim]")
+
+        _con.print(table)
+        if total:
+            _con.print(f"  [dim]{total} MCP tool(s) ready[/dim]")
     except Exception as exc:
         logging.getLogger("MCP").warning("MCP tool loading failed (continuing with local tools): %s", exc)
 
@@ -136,9 +153,15 @@ def main() -> None:
     provider = _build_provider(settings)
     memory = Memory()
 
+    if memory.history:
+        from rich.console import Console
+        Console().print(
+            f"  [dim]↩ Restored {len(memory.history)} messages from previous session.[/dim]"
+        )
+
     # Wrap the agent loop into a single callable for the REPL
     def agent_fn(user_input: str, on_stream_chunk=None, on_usage=None) -> str:
-        return run_agent_loop(
+        result = run_agent_loop(
             user_input=user_input,
             provider=provider,
             executor=executor,
@@ -150,8 +173,10 @@ def main() -> None:
             on_stream_chunk=on_stream_chunk,
             on_usage=on_usage,
         )
+        memory.save()
+        return result
 
-    run_repl(agent_fn, executor=executor, safe_mode=safe_mode)
+    run_repl(agent_fn, executor=executor, safe_mode=safe_mode, registry=registry, workspace_root=workspace_root)
 
 
 class _PromptBuilderAdapter:

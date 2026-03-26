@@ -330,9 +330,32 @@ class MCPClient:
 
     def __init__(self, registry: Any) -> None:
         self.registry = registry
+        # Populated after connect_and_load(): {"server_name": tool_count}
+        self.server_stats: dict = {}
 
     def connect_and_load(self) -> None:
         """Connect to all servers and load tools into registry."""
         _log("MCPClient.connect_and_load() starting")
-        load_tools(self.registry)
+        # Snapshot tool list before loading to compute per-server deltas
+        _before: set = set(self.registry.list_tools()) if hasattr(self.registry, "list_tools") else set()
+
+        # Patch _load_server_tools to capture per-server counts
+        import mcp.mcp_client as _self_mod
+        _orig = _self_mod._load_server_tools
+
+        _stats: dict = {}
+
+        def _tracked(registry: Any, connection: Any) -> int:
+            label = getattr(connection, "server_label", "unknown")
+            n = _orig(registry, connection)
+            _stats[label] = n
+            return n
+
+        _self_mod._load_server_tools = _tracked
+        try:
+            load_tools(self.registry)
+        finally:
+            _self_mod._load_server_tools = _orig
+
+        self.server_stats = _stats
         _log("MCPClient.connect_and_load() complete")
