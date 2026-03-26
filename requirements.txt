@@ -14,4 +14,4 @@ sentence-transformers>=2.2.0
 chromadb>=0.4.0
 
 # MCP
-# Add MCP SDK when Person 4 selects library
+mcp>=1.0.0
