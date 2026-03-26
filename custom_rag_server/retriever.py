@@ -20,16 +20,23 @@ def retrieve(query: str, top_k: int = 5, chroma_path: Path = Path('./chroma_db')
     2. Embed hypothetical answer
     3. Retrieve docs similar to hypothetical
     """
-    # TODO: HyDE implementation
-    # TODO: Return top_k chunks
-    llm = Groq(api_key=os.getenv('GROQ_API_KEY'))
+    # HyDE: if GROQ_API_KEY isn't available (common inside a spawned MCP subprocess),
+    # fall back to using the raw query as the "hypothetical doc" so retrieval still works.
+    api_key = os.getenv("GROQ_API_KEY") or ""
+    model_name = os.getenv("MODEL_NAME") or "llama-3.3-70b-versatile"
 
-    response = llm.chat.completions.create(
-        model=str(os.getenv('MODEL_NAME')),
-        messages=[{'role': 'user', 'content': f'{query}'}]
-    )
-    
-    hypo_doc = response.choices[0].message.content or ""
+    hypo_doc = query
+    if api_key:
+        try:
+            llm = Groq(api_key=api_key)
+            response = llm.chat.completions.create(
+                model=str(model_name),
+                messages=[{"role": "user", "content": query}],
+            )
+            hypo_doc = response.choices[0].message.content or query
+        except Exception:
+            # Retrieval fallback (still useful for demo and avoids hard failure)
+            hypo_doc = query
 
     vector = embed([hypo_doc])[0]
 
