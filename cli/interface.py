@@ -48,6 +48,36 @@ def display_response(response: str) -> None:
     console.print(Panel(response, title="[bold green]Agent[/bold green]", border_style="green"))
 
 
+def begin_stream() -> None:
+    """Print the streaming header before chunks arrive."""
+    console.print("[bold green]╭─── Agent ───────────────────────────────────────────────────────╮[/bold green]")
+    console.print("[bold green]│[/bold green] ", end="")
+
+
+def stream_chunk(chunk: str) -> None:
+    """Print a single streamed chunk inline, handling newlines cleanly."""
+    # Replace newlines so subsequent lines get the border prefix
+    formatted = chunk.replace("\n", "\n[bold green]│[/bold green] ")
+    console.print(formatted, end="", highlight=False)
+
+
+def end_stream() -> None:
+    """Print the streaming footer after all chunks arrive."""
+    console.print()
+    console.print("[bold green]╰─────────────────────────────────────────────────────────────────╯[/bold green]")
+
+
+def display_usage(usage: dict) -> None:
+    """Display token usage stats in a subtle dim line below the response."""
+    prompt = usage.get("prompt_tokens", 0)
+    completion = usage.get("completion_tokens", 0)
+    total = usage.get("total_tokens", 0)
+    console.print(
+        f"  [dim]↳ {total:,} tokens  "
+        f"({prompt:,} prompt + {completion:,} completion)[/dim]"
+    )
+
+
 def display_error(message: str) -> None:
     """Display an error message."""
     console.print(f"[bold red][ERROR][/bold red] {message}")
@@ -103,7 +133,7 @@ def ask_execution_mode() -> bool:
 
 
 def run_repl(
-    agent_fn: Callable[[str], str],
+    agent_fn: Callable,
     executor: Optional[Any] = None,
     safe_mode: bool = False,
 ) -> None:
@@ -111,7 +141,8 @@ def run_repl(
     Run the main REPL loop.
 
     Args:
-        agent_fn:  Callable that takes user_input and returns the agent response.
+        agent_fn:  Callable(user_input, on_stream_chunk=None) -> str.
+                   Accepts an optional streaming callback for live output.
         executor:  ToolExecutor instance — if provided, allows live mode switching.
         safe_mode: Initial execution mode (True = safe, False = auto).
     """
@@ -152,7 +183,32 @@ def run_repl(
 
         console.print("[dim]Thinking...[/dim]")
         try:
-            response = agent_fn(user_input)
-            display_response(response)
+            # Track whether streaming started so we only call begin/end_stream once
+            streaming_state = {"started": False}
+            usage_holder: list = []
+
+            def _on_stream_chunk(chunk: str) -> None:
+                if not streaming_state["started"]:
+                    begin_stream()
+                    streaming_state["started"] = True
+                stream_chunk(chunk)
+
+            def _on_usage(usage: dict) -> None:
+                usage_holder.append(usage)
+
+            response = agent_fn(
+                user_input,
+                on_stream_chunk=_on_stream_chunk,
+                on_usage=_on_usage,
+            )
+
+            if streaming_state["started"]:
+                end_stream()
+            else:
+                # Provider doesn't support streaming — fall back to panel display
+                display_response(response)
+
+            if usage_holder:
+                display_usage(usage_holder[0])
         except Exception as exc:
             display_error(str(exc))

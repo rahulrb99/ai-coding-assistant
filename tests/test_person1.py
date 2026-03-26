@@ -311,7 +311,7 @@ class TestCLIInterface:
 
         agent_calls = []
 
-        def mock_agent(user_input):
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
             agent_calls.append(user_input)
             return "response"
 
@@ -328,7 +328,7 @@ class TestCLIInterface:
         with patch("cli.interface.console") as mock_console:
             mock_console.input.side_effect = KeyboardInterrupt
             # Should exit cleanly without raising
-            run_repl(lambda x: "ok")
+            run_repl(lambda x, on_stream_chunk=None, on_usage=None: "ok")
 
     def test_run_repl_skips_empty_input(self):
         from cli.interface import run_repl
@@ -336,9 +336,13 @@ class TestCLIInterface:
         agent_calls = []
         inputs = iter(["", "hello", "exit"])
 
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
+            agent_calls.append(user_input)
+            return "ok"
+
         with patch("cli.interface.console") as mock_console:
             mock_console.input.side_effect = lambda _: next(inputs)
-            run_repl(lambda x: (agent_calls.append(x), "ok")[1])
+            run_repl(mock_agent)
 
         assert agent_calls == ["hello"]
 

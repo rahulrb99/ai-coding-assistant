@@ -42,7 +42,10 @@ def get_settings() -> dict:
         "api_key": api_key,
         "workspace_root": workspace_root,
         "execution_mode": execution_mode,
+        # MCP server URLs (optional — agent works without them using local tools)
         "mcp_tavily_url": os.getenv("MCP_TAVILY_URL", "").strip() or None,
         "mcp_context7_url": os.getenv("MCP_CONTEXT7_URL", "").strip() or None,
         "mcp_rag_server_url": os.getenv("MCP_RAG_SERVER_URL", "").strip() or None,
+        # API keys for external MCP services
+        "tavily_api_key": os.getenv("TAVILY_API_KEY", "").strip() or None,
     }

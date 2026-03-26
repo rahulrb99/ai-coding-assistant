@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from groq import Groq
 
@@ -84,10 +84,34 @@ class GroqProvider(LLMProvider):
                     "arguments": arguments,
                 }
 
-            return self._normalize(content, tool_call)
+            usage: Optional[Dict[str, int]] = None
+            if completion.usage:
+                usage = {
+                    "prompt_tokens": completion.usage.prompt_tokens,
+                    "completion_tokens": completion.usage.completion_tokens,
+                    "total_tokens": completion.usage.total_tokens,
+                }
+
+            return self._normalize(content, tool_call, usage)
 
         # All retries exhausted — re-raise the last tool_use_failed error
         raise last_exc  # type: ignore[misc]
+
+    def stream_response(self, messages: List[Dict[str, Any]]) -> Iterator[str]:
+        """
+        Stream the final text response token-by-token without tool calling.
+        Called only for the final answer after all tool calls are complete.
+        Yields text chunks, then a final sentinel dict with usage stats.
+        """
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            parallel_tool_calls=False,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
 
 def _build_groq_tools(tool_schemas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
