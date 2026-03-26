@@ -5,7 +5,7 @@ HyDE: generate hypothetical answer, embed, retrieve similar chunks.
 from typing import List
 import os
 from groq import Groq
-from embeddings import embed
+from custom_rag_server.embeddings import embed
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from pathlib import Path

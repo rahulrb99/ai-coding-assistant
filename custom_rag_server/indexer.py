@@ -36,9 +36,13 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
         persist_directory=str(chroma_path)
     )
 
+    # Skip indexing if Chroma already has documents (run-once behaviour)
+    if chroma_path.exists() and any(chroma_path.iterdir()):
+        return
+
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
-        overlap=200,
+        chunk_overlap=200,
     )
 
     chunks = text_splitter.split_documents(docs)
