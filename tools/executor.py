@@ -4,7 +4,13 @@ Person 1 calls executor.execute(tool_name, arguments).
 Validate, confirm (SAFE_MODE), execute, format result.
 """
 from pathlib import Path
+
+from rich.console import Console
+from rich.prompt import Confirm
+
 from tools.registry import ToolRegistry
+
+_console = Console()
 
 WRITE_TOOLS = {"write_file", "edit_file", "run_shell"}
 
@@ -45,10 +51,15 @@ class ToolExecutor:
                 except ValueError:
                     return self._error(tool_name, "Security error: path escapes workspace_root.")
 
-            # Step 4: if safe_mode and tool_name in WRITE_TOOLS — ask input() confirm
+            # Step 4: if safe_mode and tool_name in WRITE_TOOLS — ask for confirmation
             if self.safe_mode and tool_name in WRITE_TOOLS:
-                answer = input(f"Confirm running {tool_name}? (y/N): ").strip().lower()
-                if answer not in {"y", "yes"}:
+                _console.print(
+                    f"\n  [bold yellow]⚠  Safe Mode:[/bold yellow] Agent wants to run "
+                    f"[bold cyan]{tool_name}[/bold cyan]"
+                )
+                confirmed = Confirm.ask("  Allow this action?", default=False)
+                if not confirmed:
+                    _console.print("  [dim]Action cancelled.[/dim]")
                     return self._error(tool_name, "Cancelled by user.")
 
             # Step 5: call tool.execute(**params) and return result

@@ -1,12 +1,15 @@
-"""
-Groq Provider — Person 3
+"""Groq Provider — Person 3
 Calls Groq API and normalizes response to the shared format.
 """
+from __future__ import annotations
+
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from groq import Groq
+
+from providers.base_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +17,7 @@ logger = logging.getLogger(__name__)
 _MAX_TOOL_RETRIES = 2
 
 
-class GroqProvider:
+class GroqProvider(LLMProvider):
     """Groq API provider. Free tier available."""
 
     def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile") -> None:
@@ -29,7 +32,7 @@ class GroqProvider:
         Returns: {"content": str | None, "tool_call": {"name": str, "arguments": dict} | None}
 
         Retries up to _MAX_TOOL_RETRIES times on tool_use_failed errors (model generated
-        tool calls in the wrong XML format).  On the final retry, tools are dropped so the
+        tool calls in the wrong XML format). On the final retry, tools are dropped so the
         model falls back to a plain-text answer rather than crashing the loop.
         """
         groq_tools = _build_groq_tools(tools)
@@ -81,22 +84,48 @@ class GroqProvider:
                     "arguments": arguments,
                 }
 
-            return {"content": content, "tool_call": tool_call}
+            usage: Optional[Dict[str, int]] = None
+            if completion.usage:
+                usage = {
+                    "prompt_tokens": completion.usage.prompt_tokens,
+                    "completion_tokens": completion.usage.completion_tokens,
+                    "total_tokens": completion.usage.total_tokens,
+                }
+
+            return self._normalize(content, tool_call, usage)
 
         # All retries exhausted — re-raise the last tool_use_failed error
         raise last_exc  # type: ignore[misc]
 
+    def stream_response(self, messages: List[Dict[str, Any]]) -> Iterator[str]:
+        """
+        Stream the final text response token-by-token without tool calling.
+        Called only for the final answer after all tool calls are complete.
+        Yields text chunks, then a final sentinel dict with usage stats.
+        """
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            parallel_tool_calls=False,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
 
 def _build_groq_tools(tool_schemas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert internal tool schema format to Groq's function-calling format."""
-    groq_tools = []
+    groq_tools: List[Dict[str, Any]] = []
     for t in tool_schemas:
-        groq_tools.append({
-            "type": "function",
-            "function": {
-                "name": t.get("name", ""),
-                "description": t.get("description", ""),
-                "parameters": t.get("schema", {"type": "object", "properties": {}}),
-            },
-        })
+        groq_tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": t.get("name", ""),
+                    "description": t.get("description", ""),
+                    "parameters": t.get("schema", {"type": "object", "properties": {}}),
+                },
+            }
+        )
     return groq_tools
