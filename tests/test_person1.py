@@ -255,6 +255,56 @@ class TestAgentLoop:
         )
         assert "error" in result.lower()
 
+    def test_retries_on_transient_error(self):
+        """Provider fails twice then succeeds — loop should return final answer."""
+        from agent.agent_loop import run_agent_loop
+        from unittest.mock import patch
+
+        call_count = {"n": 0}
+
+        class _FlakyProvider:
+            def generate(self, messages, tools):
+                call_count["n"] += 1
+                if call_count["n"] < 3:
+                    raise RuntimeError("transient failure")
+                return {"content": "finally worked", "tool_call": None}
+
+        # Patch time.sleep so tests don't actually wait
+        with patch("agent.agent_loop.time.sleep"):
+            result = run_agent_loop(
+                user_input="do something",
+                provider=_FlakyProvider(),
+                executor=_MockExecutor(),
+                memory=_MockMemory(),
+                prompt_builder=_MockPromptBuilder(),
+                tool_registry=_MockRegistry(),
+            )
+
+        assert result == "finally worked"
+        assert call_count["n"] == 3
+
+    def test_rate_limit_error_surfaces_friendly_message(self):
+        """After MAX_RETRIES exhausted on a 429, returns a human-friendly message."""
+        from agent.agent_loop import run_agent_loop, MAX_RETRIES
+        from unittest.mock import patch
+
+        class _RateLimitProvider:
+            def generate(self, messages, tools):
+                raise RuntimeError("Error code: 429 - rate_limit_exceeded. Try again in 60s.")
+
+        with patch("agent.agent_loop.time.sleep"):
+            result = run_agent_loop(
+                user_input="do something",
+                provider=_RateLimitProvider(),
+                executor=_MockExecutor(),
+                memory=_MockMemory(),
+                prompt_builder=_MockPromptBuilder(),
+                tool_registry=_MockRegistry(),
+            )
+
+        assert "rate limit" in result.lower()
+        assert "retry" in result.lower() or "wait" in result.lower()
+
     def test_empty_content_returns_empty_string(self):
         from agent.agent_loop import run_agent_loop
 

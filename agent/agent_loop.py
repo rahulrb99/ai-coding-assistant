@@ -5,9 +5,72 @@ Delegates tool execution to Tool Executor (never executes tools directly).
 """
 import json
 import logging
+import re
+import time
 from typing import Any, Callable, List, Optional
 
 logger = logging.getLogger("AGENT")
+
+MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 1.0  # seconds; doubles each attempt (1 → 2 → 4)
+
+
+def _extract_retry_after(exc: Exception) -> Optional[float]:
+    """
+    Parse a 'retry after Xs' hint from rate-limit error messages.
+    Returns seconds to wait, or None if not found.
+    """
+    text = str(exc)
+    match = re.search(r"try again in\s+([\d.]+)s", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    match = re.search(r"retry.after[:\s]+([\d.]+)", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    text = str(exc)
+    return "429" in text or "rate_limit" in text.lower() or "rate limit" in text.lower()
+
+
+def _generate_with_retry(
+    provider: Any,
+    messages: list,
+    tools: list,
+    on_retry: Optional[Callable[[int, float], None]] = None,
+) -> dict:
+    """
+    Call provider.generate() with up to MAX_RETRIES retries and exponential backoff.
+    on_retry(attempt, wait_secs) is called before each sleep so the UI can inform the user.
+    Raises the last exception if all retries fail.
+    """
+    last_exc: Exception = RuntimeError("Unknown error")
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            return provider.generate(messages, tools)
+        except Exception as exc:
+            last_exc = exc
+            if attempt == MAX_RETRIES:
+                break  # exhausted — re-raise below
+
+            if _is_rate_limit(exc):
+                wait = _extract_retry_after(exc) or (_RETRY_BASE_DELAY * (2 ** attempt))
+                # Cap the wait at 120 s so we don't hang forever
+                wait = min(wait, 120.0)
+            else:
+                wait = _RETRY_BASE_DELAY * (2 ** attempt)
+
+            logger.warning(
+                "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, MAX_RETRIES, wait, exc,
+            )
+            if on_retry:
+                on_retry(attempt + 1, wait)
+            time.sleep(wait)
+
+    raise last_exc
 
 # Maximum tools to send to the LLM in a single call.
 # Too many tools causes models to generate malformed tool calls.
@@ -108,9 +171,13 @@ def run_agent_loop(
         )
 
         try:
-            response = provider.generate(messages, tools)
+            response = _generate_with_retry(provider, messages, tools)
         except Exception as exc:
-            logger.error("LLM provider error: %s", exc)
+            logger.error("LLM provider error after %d retries: %s", MAX_RETRIES, exc)
+            if _is_rate_limit(exc):
+                retry_after = _extract_retry_after(exc)
+                hint = f" — try again in {retry_after:.0f}s" if retry_after else ""
+                return f"Error: Rate limit reached{hint}. Please wait and retry."
             return f"Error: LLM provider failed — {exc}"
 
         if not response or not isinstance(response, dict):
