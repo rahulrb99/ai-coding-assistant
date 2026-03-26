@@ -213,6 +213,48 @@ def run_agent_loop(
         total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
         total_usage["total_tokens"] += usage.get("total_tokens", 0)
 
+    def _execute_tool_call(tool_call: dict, content_for_memory: str = "") -> None:
+        tool_name = tool_call.get("name", "")
+        tool_call_id = tool_call.get("id", f"call_{tool_name}")
+        arguments = tool_call.get("arguments") or {}
+
+        logger.info("[TOOL] %s args=%r", tool_name, arguments)
+
+        result = executor.execute(tool_name, arguments)
+        tool_output = result.get("output") or result.get("message") or str(result)
+
+        if on_tool_call:
+            on_tool_call(tool_name, arguments, result)
+
+        # Store assistant's tool-call decision in the format Groq expects
+        memory.add_raw_message(
+            {
+                "role": "assistant",
+                "content": content_for_memory or "",
+                "tool_calls": [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(arguments),
+                        },
+                    }
+                ],
+            }
+        )
+
+        # Store tool result with role="tool" and matching tool_call_id
+        memory.add_raw_message(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": tool_output,
+            }
+        )
+
+        logger.info("[TOOL] result status=%s", result.get("status"))
+
     for iteration in range(MAX_ITERATIONS):
         logger.info("Iteration %d/%d", iteration + 1, MAX_ITERATIONS)
 
@@ -248,43 +290,17 @@ def run_agent_loop(
                 content = ""
 
         if tool_call:
-            tool_name = tool_call.get("name", "")
-            tool_call_id = tool_call.get("id", f"call_{tool_name}")
-            arguments = tool_call.get("arguments") or {}
-
-            logger.info("[TOOL] %s args=%r", tool_name, arguments)
-
-            result = executor.execute(tool_name, arguments)
-            tool_output = result.get("output") or result.get("message") or str(result)
-
-            if on_tool_call:
-                on_tool_call(tool_name, arguments, result)
-
-            # Store assistant's tool-call decision in the format Groq expects
-            memory.add_raw_message({
-                "role": "assistant",
-                "content": content or "",
-                "tool_calls": [{
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_name,
-                        "arguments": json.dumps(arguments),
-                    },
-                }],
-            })
-
-            # Store tool result with role="tool" and matching tool_call_id
-            memory.add_raw_message({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": tool_output,
-            })
-
-            logger.info("[TOOL] result status=%s", result.get("status"))
+            _execute_tool_call(tool_call, content_for_memory=content or "")
         else:
             # No tool call — stream the final answer if supported, else return full content
             logger.info("Final answer returned after %d iteration(s)", iteration + 1)
+            # If we already have non-empty content from generate(), don't make an extra
+            # streaming request (which can diverge and double token usage).
+            if content:
+                if on_usage and total_usage["total_tokens"]:
+                    on_usage(total_usage)
+                memory.add_assistant_message(content)
+                return content
             if on_stream_chunk and hasattr(provider, "stream_response"):
                 streamed_content = ""
                 try:
@@ -295,6 +311,12 @@ def run_agent_loop(
                         else:
                             on_stream_chunk(chunk)
                             streamed_content += chunk
+                    # If the streamed "final answer" is actually a tool-call blob, execute it.
+                    inline = _parse_inline_tool_call(streamed_content)
+                    if inline:
+                        _execute_tool_call(inline, content_for_memory="")
+                        # Continue the loop: the next iteration will incorporate the tool result.
+                        continue
                     if on_usage and total_usage["total_tokens"]:
                         on_usage(total_usage)
                     memory.add_assistant_message(streamed_content)

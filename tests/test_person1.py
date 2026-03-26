@@ -332,6 +332,40 @@ class TestAgentLoop:
         assert result == "Done."
         assert executor.calls[0] == ("read_file", {"path": "x.py"})
 
+    def test_streamed_inline_tool_call_json_is_executed(self):
+        """If provider streams a tool call JSON blob as text, the loop should execute it."""
+        from agent.agent_loop import run_agent_loop
+
+        class _StreamyProvider(_MockProvider):
+            def stream_response(self, messages):
+                yield '<|python_tag|>{"type":"function","name":"read_file","parameters":{"path":"x.py"}}'
+
+        provider = _StreamyProvider([
+            {"content": "", "tool_call": None},
+            {"content": "Done.", "tool_call": None},
+        ])
+
+        executor = _MockExecutor(result={"status": "success", "tool": "read_file", "output": "file content"})
+        memory = _MockMemory()
+
+        chunks = []
+
+        def _on_chunk(c: str) -> None:
+            chunks.append(c)
+
+        result = run_agent_loop(
+            user_input="read x.py",
+            provider=provider,
+            executor=executor,
+            memory=memory,
+            prompt_builder=_MockPromptBuilder(),
+            tool_registry=_MockRegistry(),
+            on_stream_chunk=_on_chunk,
+        )
+
+        assert result == "Done."
+        assert executor.calls[0] == ("read_file", {"path": "x.py"})
+
     def test_empty_content_returns_empty_string(self):
         from agent.agent_loop import run_agent_loop
 
