@@ -133,6 +133,8 @@ MAX_TOOLS_PER_CALL = 12
 _CORE_TOOLS = {
     "read_file", "write_file", "edit_file", "run_shell", "search_codebase",
     "tavily_search", "tavily_research", "list_directory", "directory_tree",
+    # Custom MCP RAG tools are namespaced as custom_rag_<tool>
+    "custom_rag_query",
 }
 
 
@@ -145,9 +147,13 @@ def _select_tools(all_tools: List[dict]) -> List[dict]:
         return all_tools
 
     core = [t for t in all_tools if t.get("name") in _CORE_TOOLS]
-    others = [t for t in all_tools if t.get("name") not in _CORE_TOOLS]
+    # Always include any custom_rag_* tools if present
+    rag = [t for t in all_tools if str(t.get("name", "")).startswith("custom_rag_") and t not in core]
+    others = [t for t in all_tools if t.get("name") not in _CORE_TOOLS and t not in rag]
     remaining_slots = MAX_TOOLS_PER_CALL - len(core)
-    return core + others[:max(remaining_slots, 0)]
+    picked = core + rag
+    remaining_slots = MAX_TOOLS_PER_CALL - len(picked)
+    return picked + others[:max(remaining_slots, 0)]
 
 MAX_ITERATIONS = 10
 
