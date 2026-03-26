@@ -2,6 +2,8 @@
 Custom RAG MCP Server — Person 5
 Indexes LangChain docs. HyDE. Exposes as MCP server.
 """
+from indexer import index_documentation
+from retriever import retrieve
 
 
 def main() -> None:
