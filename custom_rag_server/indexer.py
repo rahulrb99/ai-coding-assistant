@@ -19,6 +19,16 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
     # TODO: RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
     # TODO: HuggingFaceEmbeddings (all-MiniLM-L6-v2)
     # TODO: Chroma.from_documents()
+    loader = DirectoryLoader(
+        path=str(docs_path),
+        glob="**/*.mdx",
+        loader_cls=TextLoader,
+        loader_kwargs={'encoding': 'utf-8'},
+        recursive=True
+    )
+
+    docs = loader.load()
+    
     embeddings = HuggingFaceEmbeddings()
     vector_store = Chroma(
         collection_name='RAG-embedder',
@@ -31,13 +41,6 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
         overlap=200,
     )
 
-    text_loader = TextLoader(
-        path
-    )
+    chunks = text_splitter.split_documents(docs)
 
-    loader = DirectoryLoader(
-        path=str(docs_path),
-        glob="**/*.txt",
-        loader_cls=
-    )
-    pass
+    vector_store.add_documents(chunks)

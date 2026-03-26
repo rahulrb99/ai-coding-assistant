@@ -9,5 +9,5 @@ from langchain_huggingface import HuggingFaceEmbeddings
 def embed(texts: List[str]) -> List[List[float]]:
     """Embed texts. Return list of vectors."""
     # TODO: HuggingFaceEmbeddings
-    vectors = HuggingFaceEmbeddings.em
-    pass
+    embeddings = HuggingFaceEmbeddings()
+    return [embeddings.embed_query(texts[0])]
