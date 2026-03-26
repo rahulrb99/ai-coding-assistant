@@ -4,7 +4,8 @@ Run once before starting the custom RAG server:
 
     python custom_rag_server/download_docs.py
 
-Uses a sparse git checkout to fetch only the docs/ folder (~50 MB vs 2 GB full clone).
+Shallow-clones (~150 MB) the LangChain repo into a temp folder,
+copies only the docs/ subfolder to langchain_docs/, then deletes the clone.
 """
 import shutil
 import subprocess
@@ -14,58 +15,48 @@ from pathlib import Path
 
 DEST = Path("langchain_docs")
 REPO = "https://github.com/langchain-ai/langchain.git"
-BRANCH = "master"
-SPARSE_PATH = "docs"
 
 
-def _run(cmd: list, cwd: str) -> bool:
+def _run(cmd: list, cwd: str, label: str) -> None:
+    print(f"  {label}...")
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"  ERROR running {' '.join(cmd)}: {result.stderr.strip()}", file=sys.stderr)
-        return False
-    return True
+        print(f"  ERROR: {result.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main() -> None:
     if DEST.exists():
-        mdx = list(DEST.rglob("*.mdx"))
-        md = list(DEST.rglob("*.md"))
-        total = len(mdx) + len(md)
+        total = len(list(DEST.rglob("*.mdx"))) + len(list(DEST.rglob("*.md")))
         if total > 0:
-            print(f"langchain_docs/ already has {total} docs ({len(mdx)} .mdx + {len(md)} .md). Nothing to do.")
+            print(f"langchain_docs/ already has {total} docs. Nothing to do.")
             return
-        print("langchain_docs/ exists but is empty — re-downloading...")
+        print("langchain_docs/ exists but is empty — removing and re-downloading.")
         shutil.rmtree(DEST)
 
-    print("Downloading LangChain docs (sparse checkout)...")
-    DEST.mkdir(parents=True)
-    cwd = str(DEST)
+    print("Shallow-cloning LangChain repo (depth=1, ~150 MB)...")
+    with tempfile.TemporaryDirectory() as tmp:
+        _run(
+            ["git", "clone", "--depth=1", "--no-tags", REPO, tmp],
+            cwd=".",
+            label="cloning (this takes ~1-2 min on a slow connection)",
+        )
 
-    steps = [
-        (["git", "init"], "initialising repo"),
-        (["git", "remote", "add", "origin", REPO], "adding remote"),
-        (["git", "sparse-checkout", "init", "--no-cone"], "enabling sparse checkout"),
-        (["git", "sparse-checkout", "set", f"{SPARSE_PATH}/"], "setting sparse path"),
-        (["git", "fetch", "--depth=1", "origin", BRANCH], "fetching (this may take a minute)..."),
-        (["git", "checkout", f"origin/{BRANCH}", "--", f"{SPARSE_PATH}/"], "checking out docs/"),
-    ]
-
-    for cmd, label in steps:
-        print(f"  {label}...")
-        if not _run(cmd, cwd):
-            print(f"\nFailed. Try manually:\n  cd {DEST} && git pull", file=sys.stderr)
+        # Find the docs folder (could be docs/ or docs/docs/)
+        for candidate in ["docs/docs", "docs"]:
+            src = Path(tmp) / candidate
+            if src.exists() and any(src.rglob("*.md")):
+                print(f"  Found docs at {candidate}/ — copying to langchain_docs/")
+                shutil.copytree(src, DEST)
+                break
+        else:
+            print("ERROR: Could not find docs folder in repo.", file=sys.stderr)
             sys.exit(1)
 
-    mdx = list(DEST.rglob("*.mdx"))
-    md = list(DEST.rglob("*.md"))
-    total = len(mdx) + len(md)
-
-    if total == 0:
-        print("\nWarning: no .md/.mdx files found. The docs/ path may have changed.")
-        print("Check https://github.com/langchain-ai/langchain/tree/master/docs")
-    else:
-        print(f"\nDone. {total} docs downloaded ({len(mdx)} .mdx + {len(md)} .md) to {DEST}/")
-        print("Now run:  python -m custom_rag_server.main")
+    mdx = len(list(DEST.rglob("*.mdx")))
+    md = len(list(DEST.rglob("*.md")))
+    print(f"\nDone. {mdx + md} files copied ({mdx} .mdx + {md} .md) to langchain_docs/")
+    print("Now run:  python -m custom_rag_server.main")
 
 
 if __name__ == "__main__":
