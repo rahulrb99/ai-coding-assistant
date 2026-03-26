@@ -8,6 +8,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+_COLLECTION_NAME = f"RAG-embedder-{_MODEL_NAME.split('/')[-1]}"
 
 
 def index_documentation(docs_path: Path, chroma_path: Path) -> None:
@@ -52,7 +53,7 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
 
     embeddings = HuggingFaceEmbeddings(model_name=_MODEL_NAME)
     vector_store = Chroma(
-        collection_name="RAG-embedder",
+        collection_name=_COLLECTION_NAME,
         embedding_function=embeddings,
         persist_directory=str(chroma_path),
     )

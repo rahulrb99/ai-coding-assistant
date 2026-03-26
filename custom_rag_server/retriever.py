@@ -11,6 +11,7 @@ from langchain_chroma import Chroma
 from pathlib import Path
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+_COLLECTION_NAME = f"RAG-embedder-{_MODEL_NAME.split('/')[-1]}"
 
 
 def retrieve(query: str, top_k: int = 5, chroma_path: Path = Path('./chroma_db')) -> List[str]:
@@ -42,7 +43,7 @@ def retrieve(query: str, top_k: int = 5, chroma_path: Path = Path('./chroma_db')
 
     embeddings = HuggingFaceEmbeddings(model_name=_MODEL_NAME)
     vector_store = Chroma(
-        collection_name='RAG-embedder',
+        collection_name=_COLLECTION_NAME,
         embedding_function=embeddings,
         persist_directory=str(chroma_path)
     )

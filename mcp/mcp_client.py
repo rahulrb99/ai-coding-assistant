@@ -115,10 +115,13 @@ class _MCPServerConnection:
         self._cm_stack = []
 
         if self._transport == "stdio":
+            # Inherit parent process environment by default so spawned MCP servers
+            # can read API keys from .env (e.g. GROQ_API_KEY for custom_rag HyDE).
+            env = self._env if self._env is not None else dict(os.environ)
             params = StdioServerParameters(
                 command=self._command,
                 args=self._args,
-                env=self._env,
+                env=env,
             )
             cm = stdio_client(params)
         elif self._transport == "sse":
