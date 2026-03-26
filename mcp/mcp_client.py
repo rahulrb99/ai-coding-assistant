@@ -173,19 +173,21 @@ class MCPToolWrapper(Tool):
     def __init__(
         self,
         mcp_name: str,
+        exposed_name: str,
         mcp_description: str,
         mcp_schema: Dict[str, Any],
         connection: _MCPServerConnection,
     ) -> None:
         # Instance attributes (not class-level) — required by ToolRegistry.get_tool_schemas()
-        self.name = mcp_name
+        self.name = exposed_name
         self.description = mcp_description
         self.schema = mcp_schema
         self._connection = connection
+        self._remote_name = mcp_name
 
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
         try:
-            output = self._connection.call_tool(self.name, kwargs)
+            output = self._connection.call_tool(self._remote_name, kwargs)
             return self.success(output)
         except TimeoutError as e:
             self._connection.invalidate()
@@ -211,8 +213,13 @@ def _load_server_tools(registry: Any, connection: _MCPServerConnection) -> int:
             tool_name = getattr(tool, "name", "")
             tool_desc = getattr(tool, "description", "")
             tool_schema = getattr(tool, "inputSchema", {}) or {}
+            # Namespace only custom_rag tools so the LLM can refer to them explicitly.
+            exposed_name = tool_name
+            if getattr(connection, "_label", "") == "custom_rag":
+                exposed_name = f"custom_rag_{tool_name}"
             wrapper = MCPToolWrapper(
                 mcp_name=tool_name,
+                exposed_name=exposed_name,
                 mcp_description=tool_desc,
                 mcp_schema=tool_schema,
                 connection=connection,
@@ -220,9 +227,9 @@ def _load_server_tools(registry: Any, connection: _MCPServerConnection) -> int:
             try:
                 registry.register(wrapper)
                 count += 1
-                _log(f"Registered MCP tool '{tool_name}' from server '{connection._label}'")
+                _log(f"Registered MCP tool '{exposed_name}' from server '{connection._label}'")
             except ValueError as e:
-                _warn(f"Skipping tool '{tool_name}' from '{connection._label}': {e}")
+                _warn(f"Skipping tool '{exposed_name}' from '{connection._label}': {e}")
         return count
     except Exception as e:
         _error_log(f"Failed to load tools from server '{connection._label}': {e}")
