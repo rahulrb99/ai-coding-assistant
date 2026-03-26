@@ -1,10 +1,10 @@
-# Vertex — Frozen Contracts
+﻿# Vertex ΓÇö Frozen Contracts
 
 These 5 contracts are fixed before implementation. They eliminate cross-person dependencies.
 
 ---
 
-## Contract 1 — Tool Interface (Person 2)
+## Contract 1 ΓÇö Tool Interface (Person 2)
 
 **Defined in:** `tools/base.py`
 
@@ -29,7 +29,7 @@ class Tool:
 
 ---
 
-## Contract 2 — Tool Executor API (Person 2)
+## Contract 2 ΓÇö Tool Executor API (Person 2)
 
 **Defined in:** `tools/executor.py`
 
@@ -52,7 +52,7 @@ executor.execute(tool_name: str, arguments: dict) -> dict
 
 ---
 
-## Contract 3 — Provider Interface (Person 3)
+## Contract 3 ΓÇö Provider Interface (Person 3)
 
 **Defined in:** `providers/base_provider.py`
 
@@ -71,7 +71,7 @@ provider.generate(messages: List[dict], tools: List[dict]) -> dict
 
 ---
 
-## Contract 4 — Prompt Builder (Person 5)
+## Contract 4 ΓÇö Prompt Builder (Person 5)
 
 **Defined in:** `agent/prompt_builder.py`
 
@@ -89,7 +89,7 @@ prompt_builder.build(
 
 ---
 
-## Contract 5 — Memory Interface (Person 5)
+## Contract 5 ΓÇö Memory Interface (Person 5)
 
 **Defined in:** `agent/memory.py`
 

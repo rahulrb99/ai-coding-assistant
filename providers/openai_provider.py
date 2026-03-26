@@ -50,7 +50,15 @@ class OpenAIProvider(LLMProvider):
             tool_id = _get_field(function_call, "id") or f"openai_{name}"
             parsed_tool_call = {"id": tool_id, "name": name, "arguments": arguments}
 
-        return self._normalize(content, parsed_tool_call)
+        usage: Optional[Dict[str, int]] = None
+        if completion.usage:
+            usage = {
+                "prompt_tokens": completion.usage.prompt_tokens,
+                "completion_tokens": completion.usage.completion_tokens,
+                "total_tokens": completion.usage.total_tokens,
+            }
+
+        return self._normalize(content, parsed_tool_call, usage)
 
 
 def _build_openai_functions(tool_schemas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
