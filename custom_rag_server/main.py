@@ -2,6 +2,9 @@
 Custom RAG MCP Server — Person 5
 Indexes LangChain docs. HyDE. Exposes as MCP server.
 """
+import logging
+import os
+import sys
 from custom_rag_server.indexer import index_documentation
 from custom_rag_server.retriever import retrieve
 from pathlib import Path
@@ -39,6 +42,25 @@ def query(query: str, top_k: int = 5) -> str:
 
 def main() -> None:
     """MCP server entry point."""
+    # IMPORTANT: stdio MCP transport uses stdout for JSON-RPC.
+    # Any non-JSON output on stdout will break the connection and look like
+    # "Connection closed" in the client. Force logs to stderr and silence noisy libs.
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    logging.basicConfig(
+        level=logging.WARNING,
+        stream=sys.stderr,
+        force=True,
+    )
+    for name in (
+        "chromadb",
+        "posthog",
+        "sentence_transformers",
+        "transformers",
+        "urllib3",
+        "requests",
+    ):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
     mcp.run(transport="stdio")
 
 
