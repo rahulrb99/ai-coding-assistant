@@ -1,31 +1,27 @@
-"""
-Base LLM Provider — Person 3
-All providers return normalized output. One tool call per iteration.
-"""
+"""Base provider interface for normalized LLM responses."""
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 
-class LLMProvider(ABC):
-    """
-    Base class for LLM providers. All providers must implement generate.
+NormalizedResponse = Dict[str, Any]
 
-    API: provider.generate(messages, tools) -> dict
-    Return format (normalized):
-        {
-            "content": str | None,
-            "tool_call": {"name": str, "arguments": dict} | None
-        }
-    Only one tool_call per iteration. If tool_call present, content may be None.
-    """
+
+class LLMProvider(ABC):
+    """Base class for LLM providers. Enforces a shared response contract."""
 
     @abstractmethod
     def generate(
         self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Generate response. Return normalized format.
-        content: str | None
-        tool_call: {"name": str, "arguments": dict} | None  (at most one per call)
-        """
-        pass
+    ) -> NormalizedResponse:
+        """Generate a single response. Must return normalized dict."""
+
+    def _normalize(
+        self, content: Optional[str], tool_call: Optional[Dict[str, Any]]
+    ) -> NormalizedResponse:
+        """Create the shared response envelope for the agent loop."""
+        return {
+            "content": content,
+            "tool_call": tool_call,
+        }
