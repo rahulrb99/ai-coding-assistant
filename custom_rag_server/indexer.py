@@ -3,7 +3,6 @@ RAG Indexer — Person 5
 Load LangChain docs, split, embed, store in Chroma.
 """
 from pathlib import Path
-from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -25,17 +24,23 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
             "Run 'python custom_rag_server/download_docs.py' first."
         )
 
-    loader = DirectoryLoader(
-        path=str(docs_path),
-        glob="**/*.mdx",
-        loader_cls=TextLoader,
-        loader_kwargs={'encoding': 'utf-8'},
-        recursive=True,
-    )
+    # Load both .md and .mdx — LangChain uses a mix across versions
+    docs = []
+    for pattern in ("**/*.mdx", "**/*.md"):
+        loader = DirectoryLoader(
+            path=str(docs_path),
+            glob=pattern,
+            loader_cls=TextLoader,
+            loader_kwargs={"encoding": "utf-8"},
+            recursive=True,
+        )
+        docs.extend(loader.load())
 
-    docs = loader.load()
     if not docs:
-        raise ValueError(f"No .mdx files found in {docs_path.resolve()}.")
+        raise ValueError(
+            f"No .md/.mdx files found in {docs_path.resolve()}. "
+            "Re-run 'python custom_rag_server/download_docs.py'."
+        )
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -45,7 +50,7 @@ def index_documentation(docs_path: Path, chroma_path: Path) -> None:
 
     embeddings = HuggingFaceEmbeddings()
     vector_store = Chroma(
-        collection_name='RAG-embedder',
+        collection_name="RAG-embedder",
         embedding_function=embeddings,
         persist_directory=str(chroma_path),
     )
