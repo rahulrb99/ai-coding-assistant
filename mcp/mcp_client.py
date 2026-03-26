@@ -346,7 +346,7 @@ class MCPClient:
         _stats: dict = {}
 
         def _tracked(registry: Any, connection: Any) -> int:
-            label = getattr(connection, "server_label", "unknown")
+            label = getattr(connection, "_label", "unknown")
             n = _orig(registry, connection)
             _stats[label] = n
             return n
