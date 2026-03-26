@@ -28,3 +28,4 @@ Thumbs.db
 # Chroma / RAG
 chroma_db/
 *.db
+langchain_docs
