@@ -305,6 +305,33 @@ class TestAgentLoop:
         assert "rate limit" in result.lower()
         assert "retry" in result.lower() or "wait" in result.lower()
 
+    def test_inline_tool_call_json_is_executed(self):
+        """If provider returns a tool call JSON blob as content, the loop should execute it."""
+        from agent.agent_loop import run_agent_loop
+
+        provider = _MockProvider([
+            {
+                "content": '<|python_tag|>{"type":"function","name":"read_file","parameters":{"path":"x.py"}}',
+                "tool_call": None,
+            },
+            {"content": "Done.", "tool_call": None},
+        ])
+
+        executor = _MockExecutor(result={"status": "success", "tool": "read_file", "output": "file content"})
+        memory = _MockMemory()
+
+        result = run_agent_loop(
+            user_input="read x.py",
+            provider=provider,
+            executor=executor,
+            memory=memory,
+            prompt_builder=_MockPromptBuilder(),
+            tool_registry=_MockRegistry(),
+        )
+
+        assert result == "Done."
+        assert executor.calls[0] == ("read_file", {"path": "x.py"})
+
     def test_empty_content_returns_empty_string(self):
         from agent.agent_loop import run_agent_loop
 

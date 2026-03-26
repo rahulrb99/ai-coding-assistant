@@ -14,6 +14,59 @@ logger = logging.getLogger("AGENT")
 MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; doubles each attempt (1 → 2 → 4)
 
+_INLINE_TOOL_PATTERNS = (
+    # Some open-source models emit tool calls as a literal JSON blob
+    # optionally prefixed by "<|python_tag|>" or similar.
+    r"<\|python_tag\|>\s*(\{[\s\S]+\})\s*$",
+    r"^\s*(\{[\s\S]+\})\s*$",
+)
+
+
+def _parse_inline_tool_call(content: str) -> Optional[dict]:
+    """
+    Best-effort fallback when the model prints a tool call as plain text instead
+    of using proper function-calling fields.
+
+    Accepts blobs like:
+        <|python_tag|>{"type":"function","name":"custom_rag_query","parameters":{"query":"retrievers"}}
+    """
+    if not content:
+        return None
+
+    candidate: Optional[str] = None
+    for pattern in _INLINE_TOOL_PATTERNS:
+        m = re.search(pattern, content.strip(), re.MULTILINE)
+        if m:
+            candidate = m.group(1)
+            break
+    if not candidate:
+        return None
+
+    try:
+        data = json.loads(candidate)
+    except Exception:
+        return None
+
+    # OpenAI-style: {"type":"function","name":"X","parameters":{...}}
+    if isinstance(data, dict) and data.get("type") == "function" and data.get("name"):
+        return {
+            "id": f"inline_{data.get('name')}",
+            "name": data.get("name"),
+            "arguments": data.get("parameters") or {},
+        }
+
+    # Alternative: {"tool_call": {"name": "...", "arguments": {...}}}
+    if isinstance(data, dict) and isinstance(data.get("tool_call"), dict):
+        tc = data["tool_call"]
+        if tc.get("name"):
+            return {
+                "id": f"inline_{tc.get('name')}",
+                "name": tc.get("name"),
+                "arguments": tc.get("arguments") or {},
+            }
+
+    return None
+
 
 def _extract_retry_after(exc: Exception) -> Optional[float]:
     """
@@ -188,6 +241,11 @@ def run_agent_loop(
 
         tool_call = response.get("tool_call")
         content = response.get("content") or ""
+
+        if not tool_call:
+            tool_call = _parse_inline_tool_call(content)
+            if tool_call:
+                content = ""
 
         if tool_call:
             tool_name = tool_call.get("name", "")
