@@ -10,6 +10,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from pathlib import Path
 
+_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
 
 def retrieve(query: str, top_k: int = 5, chroma_path: Path = Path('./chroma_db')) -> List[str]:
     """
@@ -31,7 +33,7 @@ def retrieve(query: str, top_k: int = 5, chroma_path: Path = Path('./chroma_db')
 
     vector = embed([hypo_doc])[0]
 
-    embeddings = HuggingFaceEmbeddings()
+    embeddings = HuggingFaceEmbeddings(model_name=_MODEL_NAME)
     vector_store = Chroma(
         collection_name='RAG-embedder',
         embedding_function=embeddings,

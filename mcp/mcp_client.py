@@ -203,7 +203,8 @@ def _load_server_tools(registry: Any, connection: _MCPServerConnection) -> int:
     """Connect to server, discover tools, register them. Returns count."""
     try:
         session = connection.get_session()
-        result = _bridge.run(session.list_tools())
+        # Allow extra time for servers that do one-time indexing/model downloads on boot.
+        result = _bridge.run(session.list_tools(), timeout=120.0)
         tools = result.tools if hasattr(result, "tools") else result
         count = 0
         for tool in tools:

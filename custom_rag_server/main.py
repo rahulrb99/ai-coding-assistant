@@ -12,24 +12,33 @@ mcp = FastMCP('custom-rag-server')
 # Docs can be .md or .mdx files inside langchain_docs/
 LANGCHAIN_DOCS_PATH = Path('./langchain_docs')
 CHROMA_DB_PATH = Path('./chroma_db')
+_INDEXED = False
+
+
+def _ensure_indexed() -> None:
+    """
+    Index docs lazily so the stdio MCP server can start instantly.
+    MCP clients call list_tools() immediately after spawn; doing heavy indexing
+    before mcp.run() can cause the client to time out and report 'Connection closed'.
+    """
+    global _INDEXED
+    if _INDEXED:
+        return
+    index_documentation(LANGCHAIN_DOCS_PATH, CHROMA_DB_PATH)
+    _INDEXED = True
 
 @mcp.tool()
 def query(query: str, top_k: int = 5) -> str:
+    try:
+        _ensure_indexed()
+    except Exception:
+        # If indexing isn't ready, still allow the server to respond deterministically.
+        return ""
     chunks = retrieve(query, top_k, CHROMA_DB_PATH)
     return "\n\n---\n\n".join(chunks)
 
 def main() -> None:
     """MCP server entry point."""
-    try:
-        index_documentation(LANGCHAIN_DOCS_PATH, CHROMA_DB_PATH)
-    except FileNotFoundError as exc:
-        import sys
-        print(f"[custom_rag] WARNING: {exc}", file=sys.stderr)
-        print("[custom_rag] Server starting without indexed docs — query tool will return empty results.", file=sys.stderr)
-    except Exception as exc:
-        import sys
-        print(f"[custom_rag] ERROR during indexing: {exc}", file=sys.stderr)
-
     mcp.run(transport="stdio")
 
 
