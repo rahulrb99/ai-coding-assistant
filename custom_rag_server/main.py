@@ -20,9 +20,15 @@ def query(query: str, top_k: int = 5) -> str:
 
 def main() -> None:
     """MCP server entry point."""
-    # TODO: Load indexer, retriever
-    # TODO: Expose query tool via MCP
-    index_documentation(LANGCHAIN_DOCS_PATH, CHROMA_DB_PATH)
+    try:
+        index_documentation(LANGCHAIN_DOCS_PATH, CHROMA_DB_PATH)
+    except FileNotFoundError as exc:
+        import sys
+        print(f"[custom_rag] WARNING: {exc}", file=sys.stderr)
+        print("[custom_rag] Server starting without indexed docs — query tool will return empty results.", file=sys.stderr)
+    except Exception as exc:
+        import sys
+        print(f"[custom_rag] ERROR during indexing: {exc}", file=sys.stderr)
 
     mcp.run(transport="stdio")
 
