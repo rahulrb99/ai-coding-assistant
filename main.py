@@ -105,9 +105,9 @@ def _load_mcp_tools(registry: ToolRegistry, settings: dict) -> None:
         for server, count in mcp.server_stats.items():
             total += count
             if count > 0:
-                status = "[bold green]✓ connected[/bold green]"
+                status = "[bold green]connected[/bold green]"
             else:
-                status = "[dim]✗ unavailable[/dim]"
+                status = "[dim]unavailable[/dim]"
             table.add_row(server, str(count), status)
 
         if not mcp.server_stats:
@@ -155,8 +155,9 @@ def main() -> None:
 
     if memory.history:
         from rich.console import Console
+        # Avoid unicode glyphs that can crash on legacy Windows consoles (cp1252).
         Console().print(
-            f"  [dim]↩ Restored {len(memory.history)} messages from previous session.[/dim]"
+            f"  [dim]<- Restored {len(memory.history)} messages from previous session.[/dim]"
         )
 
     # Wrap the agent loop into a single callable for the REPL

@@ -314,7 +314,8 @@ def load_tools(registry: Any) -> None:
                 server_label="custom_rag",
                 transport="stdio",
                 command=sys.executable,
-                args=[str(rag_script)],
+                # Use -m so imports resolve (custom_rag_server is a package)
+                args=["-m", "custom_rag_server.main"],
             )
         n = _load_server_tools(registry, rag_conn)
         _log(f"Custom RAG MCP server: {n} tools loaded")

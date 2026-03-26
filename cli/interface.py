@@ -74,9 +74,9 @@ def display_tool_call(tool_name: str, arguments: dict, result: dict) -> None:
 
     status = result.get("status", "unknown")
     if status == "success":
-        status_markup = "[bold green]✓[/bold green]"
+        status_markup = "[bold green]OK[/bold green]"
     else:
-        status_markup = "[bold red]✗[/bold red]"
+        status_markup = "[bold red]X[/bold red]"
 
     # Build output preview: line count + first non-empty line
     output = result.get("output") or result.get("message") or ""
@@ -127,7 +127,7 @@ def display_usage(usage: dict) -> None:
     completion = usage.get("completion_tokens", 0)
     total = usage.get("total_tokens", 0)
     console.print(
-        f"  [dim]↳ {total:,} tokens  "
+        f"  [dim]-> {total:,} tokens  "
         f"({prompt:,} prompt + {completion:,} completion)[/dim]"
     )
 
