@@ -4,7 +4,10 @@ Person 1: Wire everything together.
 """
 import logging
 import sys
+import json
+import re
 from pathlib import Path
+from typing import Optional
 
 # Add project root to path so all modules resolve correctly
 sys.path.insert(0, str(Path(__file__).parent))
@@ -120,6 +123,80 @@ def _load_mcp_tools(registry: ToolRegistry, settings: dict) -> None:
         logging.getLogger("MCP").warning("MCP tool loading failed (continuing with local tools): %s", exc)
 
 
+def _extract_json_object(text: str) -> Optional[dict]:
+    """Best-effort parse of first JSON object found in model output."""
+    if not text:
+        return None
+    text = text.strip()
+    # Fast path: whole text is JSON
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    # Fallback: locate first {...} block
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(0))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+    return None
+
+
+def _classify_needs_plan(provider: object, user_input: str) -> bool:
+    """
+    LLM-only classification (user-selected strategy 1A):
+    require plan only for repo-changing multi-step tasks.
+    """
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You classify developer requests.\n"
+                "Return ONLY JSON with keys:\n"
+                "  requires_repo_changes: boolean\n"
+                "  is_multi_step: boolean\n"
+                "Decide TRUE for requires_repo_changes only if task needs write_file/edit_file/run_shell.\n"
+                "Decide TRUE for is_multi_step only if task needs multiple distinct steps, not a single action.\n"
+            ),
+        },
+        {"role": "user", "content": user_input},
+    ]
+    response = provider.generate(messages, tools=[])
+    content = (response or {}).get("content") or ""
+    data = _extract_json_object(content) or {}
+    return bool(data.get("requires_repo_changes")) and bool(data.get("is_multi_step"))
+
+
+def _generate_plan(provider: object, user_input: str, feedback: Optional[str] = None) -> str:
+    """Generate a concise execution plan for the task."""
+    prompt = (
+        "Create a concrete implementation plan before making changes.\n"
+        "Rules:\n"
+        "- 4 to 8 numbered steps.\n"
+        "- Focus on files to inspect/change and validation steps.\n"
+        "- Keep concise and actionable.\n"
+        "- Do not execute anything; plan only.\n"
+    )
+    if feedback:
+        prompt += f"\nUser feedback on previous plan:\n{feedback}\n"
+    prompt += f"\nTask:\n{user_input}"
+    response = provider.generate(
+        [
+            {"role": "system", "content": "You are a planning assistant. Return only the plan text."},
+            {"role": "user", "content": prompt},
+        ],
+        tools=[],
+    )
+    return ((response or {}).get("content") or "").strip()
+
+
 def main() -> None:
     """Run the AI coding assistant."""
     _setup_logging()
@@ -177,7 +254,26 @@ def main() -> None:
         memory.save()
         return result
 
-    run_repl(agent_fn, executor=executor, safe_mode=safe_mode, registry=registry, workspace_root=workspace_root)
+    def planner_fn(user_input: str, feedback: Optional[str] = None) -> dict:
+        """
+        Auto plan mode:
+        - classify with LLM (1A)
+        - if repo-changing + multi-step, generate plan
+        """
+        needs_plan = _classify_needs_plan(provider, user_input)
+        if not needs_plan:
+            return {"requires_plan": False, "plan": ""}
+        plan = _generate_plan(provider, user_input, feedback=feedback)
+        return {"requires_plan": True, "plan": plan}
+
+    run_repl(
+        agent_fn,
+        planner_fn=planner_fn,
+        executor=executor,
+        safe_mode=safe_mode,
+        registry=registry,
+        workspace_root=workspace_root,
+    )
 
 
 class _PromptBuilderAdapter:

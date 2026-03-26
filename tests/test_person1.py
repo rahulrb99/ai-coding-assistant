@@ -457,6 +457,53 @@ class TestCLIInterface:
 
         assert agent_calls == ["hello"]
 
+    def test_run_repl_plan_mode_approved_injects_plan(self):
+        from cli.interface import run_repl
+
+        agent_calls = []
+
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
+            agent_calls.append(user_input)
+            return "ok"
+
+        def planner(user_input, feedback=None):
+            return {"requires_plan": True, "plan": "1. Edit file\n2. Run tests"}
+
+        inputs = iter(["update app", "exit"])
+        with patch("cli.interface.console") as mock_console, patch("cli.interface.Confirm.ask", return_value=True):
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(mock_agent, planner_fn=planner)
+
+        assert len(agent_calls) == 1
+        assert "Approved execution plan" in agent_calls[0]
+        assert "1. Edit file" in agent_calls[0]
+
+    def test_run_repl_plan_mode_rejected_then_replanned(self):
+        from cli.interface import run_repl
+
+        agent_calls = []
+        planner_calls = []
+
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
+            agent_calls.append(user_input)
+            return "ok"
+
+        def planner(user_input, feedback=None):
+            planner_calls.append((user_input, feedback))
+            if feedback:
+                return {"requires_plan": True, "plan": "1. Revised plan"}
+            return {"requires_plan": True, "plan": "1. Initial plan"}
+
+        inputs = iter(["complex task", "change step 1", "exit"])
+        with patch("cli.interface.console") as mock_console, patch("cli.interface.Confirm.ask", side_effect=[False, True]):
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(mock_agent, planner_fn=planner)
+
+        assert len(planner_calls) == 2
+        assert planner_calls[1][1] == "change step 1"
+        assert len(agent_calls) == 1
+        assert "1. Revised plan" in agent_calls[0]
+
 
 # ---------------------------------------------------------------------------
 # agent/prompt_builder.py

@@ -12,7 +12,7 @@ _PREFS_FILE = Path(".logs/preferences.json")
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.prompt import Prompt
+from rich.prompt import Prompt, Confirm
 
 console = Console()
 
@@ -242,8 +242,20 @@ def display_help(safe_mode: bool = False, registry: Optional[Any] = None) -> Non
     console.print(Panel("\n".join(lines), border_style="blue"))
 
 
+def display_plan(plan_text: str) -> None:
+    """Show an execution plan that needs user confirmation."""
+    console.print(
+        Panel(
+            plan_text,
+            title="[bold magenta]Plan Mode[/bold magenta]",
+            border_style="magenta",
+        )
+    )
+
+
 def run_repl(
     agent_fn: Callable,
+    planner_fn: Optional[Callable[[str, Optional[str]], dict]] = None,
     executor: Optional[Any] = None,
     safe_mode: bool = False,
     registry: Optional[Any] = None,
@@ -254,6 +266,7 @@ def run_repl(
 
     Args:
         agent_fn:      Callable(user_input, on_stream_chunk=None, on_usage=None) -> str.
+        planner_fn:    Optional callable(user_input, feedback) -> {"requires_plan": bool, "plan": str}
         executor:      ToolExecutor — allows live mode switching.
         safe_mode:     Initial execution mode.
         registry:      ToolRegistry — used by /help to list loaded tools.
@@ -311,6 +324,46 @@ def run_repl(
 
         # Resolve @file mentions before sending to agent
         user_input = resolve_at_mentions(user_input, workspace_root=workspace_root)
+
+        # Automatic Plan Mode: for repo-changing multi-step tasks
+        if planner_fn:
+            try:
+                plan_info = planner_fn(user_input, None)
+            except Exception as exc:
+                display_error(f"Plan mode check failed: {exc}")
+                plan_info = {"requires_plan": False, "plan": ""}
+
+            if plan_info.get("requires_plan"):
+                plan_text = plan_info.get("plan", "").strip() or "No plan generated."
+                display_plan(plan_text)
+
+                approved = Confirm.ask("Approve this plan before execution?", default=False)
+                if not approved:
+                    feedback = console.input("[bold yellow]What should change in the plan?[/bold yellow] ").strip()
+                    if not feedback:
+                        console.print("  [dim]Plan rejected. No action taken.[/dim]")
+                        continue
+
+                    try:
+                        revised = planner_fn(user_input, feedback)
+                    except Exception as exc:
+                        display_error(f"Re-planning failed: {exc}")
+                        continue
+
+                    revised_text = revised.get("plan", "").strip() or "No plan generated."
+                    display_plan(revised_text)
+                    approved = Confirm.ask("Approve revised plan?", default=False)
+                    if not approved:
+                        console.print("  [dim]Plan rejected. No action taken.[/dim]")
+                        continue
+                    plan_text = revised_text
+
+                # Inject approved one-task plan context into the execution prompt
+                user_input = (
+                    f"{user_input}\n\n"
+                    "Approved execution plan (follow this):\n"
+                    f"{plan_text}"
+                )
 
         console.print("[dim]Thinking...[/dim]")
         try:
