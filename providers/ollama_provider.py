@@ -52,7 +52,7 @@ class OllamaProvider(LLMProvider):
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": _normalize_messages_for_ollama(messages),
         }
         if ollama_tools:
             kwargs["tools"] = ollama_tools
@@ -97,7 +97,7 @@ class OllamaProvider(LLMProvider):
         """Stream final response token-by-token from Ollama."""
         stream = self._client.chat(
             model=self.model,
-            messages=messages,
+            messages=_normalize_messages_for_ollama(messages),
             stream=True,
         )
         for chunk in stream:
@@ -119,3 +119,35 @@ def _build_ollama_tools(tool_schemas: List[Dict[str, Any]]) -> List[Dict[str, An
         }
         for t in tool_schemas
     ]
+
+
+def _normalize_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Ollama expects tool_calls[*].function.arguments as a dict, while other providers
+    often keep it as a JSON string in history. Convert safely before API calls.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for msg in messages:
+        msg_copy: Dict[str, Any] = dict(msg)
+        tool_calls = msg_copy.get("tool_calls")
+        if isinstance(tool_calls, list):
+            fixed_calls = []
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    fixed_calls.append(tc)
+                    continue
+                tc_copy = dict(tc)
+                fn = tc_copy.get("function")
+                if isinstance(fn, dict):
+                    fn_copy = dict(fn)
+                    args = fn_copy.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            fn_copy["arguments"] = json.loads(args)
+                        except json.JSONDecodeError:
+                            fn_copy["arguments"] = {}
+                    tc_copy["function"] = fn_copy
+                fixed_calls.append(tc_copy)
+            msg_copy["tool_calls"] = fixed_calls
+        normalized.append(msg_copy)
+    return normalized
