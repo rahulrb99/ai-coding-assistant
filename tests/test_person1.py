@@ -457,6 +457,26 @@ class TestCLIInterface:
 
         assert agent_calls == ["hello"]
 
+    def test_run_repl_switches_provider_command(self):
+        from cli.interface import run_repl
+
+        switched = []
+
+        def switcher(name: str):
+            switched.append(name)
+            return True, "ok"
+
+        inputs = iter(["set provider ollama", "exit"])
+        with patch("cli.interface.console") as mock_console:
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(
+                lambda x, on_stream_chunk=None, on_usage=None: "ok",
+                provider_switcher=switcher,
+                available_providers=["groq", "ollama"],
+            )
+
+        assert switched == ["ollama"]
+
     def test_run_repl_plan_mode_approved_injects_plan(self):
         from cli.interface import run_repl
 

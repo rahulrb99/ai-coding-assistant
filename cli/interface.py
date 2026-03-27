@@ -220,6 +220,29 @@ def ask_execution_mode() -> bool:
     return safe_mode
 
 
+def ask_model_provider(available: list[str], default_provider: str) -> str:
+    """
+    Ask once at startup which provider to use for this run.
+    This choice is session-only and not persisted.
+    """
+    choices = [p for p in available if p]
+    if not choices:
+        return default_provider
+    if default_provider not in choices:
+        default_provider = choices[0]
+
+    console.print(
+        f"  [bold cyan]Provider[/bold cyan] [dim](this run only)[/dim] "
+        f"[dim]{'/'.join(choices)}[/dim]"
+    )
+    provider = Prompt.ask("  Use provider", choices=choices, default=default_provider)
+    console.print(
+        f"  [dim]Using provider:[/dim] [bold]{provider}[/bold]. "
+        f"[dim]Type [bold]set provider <name>[/bold] anytime to switch.[/dim]\n"
+    )
+    return provider
+
+
 def display_help(safe_mode: bool = False, registry: Optional[Any] = None) -> None:
     """Display available commands and loaded tools."""
     mode_label = "[bold red]SAFE[/bold red]" if safe_mode else "[bold green]AUTO[/bold green]"
@@ -228,6 +251,7 @@ def display_help(safe_mode: bool = False, registry: Optional[Any] = None) -> Non
         "[bold cyan]Commands:[/bold cyan]",
         "  [bold]set mode safe[/bold]   — confirm before each write/shell tool",
         "  [bold]set mode auto[/bold]   — execute all tools automatically",
+        "  [bold]set provider <name>[/bold] — switch provider for this run",
         "  [bold]/help[/bold]           — show this help",
         "  [bold]exit / quit / q[/bold] — quit\n",
         "[bold cyan]Tips:[/bold cyan]",
@@ -256,6 +280,8 @@ def display_plan(plan_text: str) -> None:
 def run_repl(
     agent_fn: Callable,
     planner_fn: Optional[Callable[[str, Optional[str]], dict]] = None,
+    provider_switcher: Optional[Callable[[str], tuple[bool, str]]] = None,
+    available_providers: Optional[list[str]] = None,
     executor: Optional[Any] = None,
     safe_mode: bool = False,
     registry: Optional[Any] = None,
@@ -267,6 +293,8 @@ def run_repl(
     Args:
         agent_fn:      Callable(user_input, on_stream_chunk=None, on_usage=None) -> str.
         planner_fn:    Optional callable(user_input, feedback) -> {"requires_plan": bool, "plan": str}
+        provider_switcher: Optional callable(provider_name) -> (ok, message)
+        available_providers: Optional list of provider names for set provider command.
         executor:      ToolExecutor — allows live mode switching.
         safe_mode:     Initial execution mode.
         registry:      ToolRegistry — used by /help to list loaded tools.
@@ -320,6 +348,27 @@ def run_repl(
                 "  [bold green]AUTO MODE[/bold green] enabled. "
                 "[dim]Agent will execute all tools automatically.[/dim]"
             )
+            continue
+
+        if cmd.startswith("set provider "):
+            requested = cmd.replace("set provider ", "", 1).strip()
+            if not requested:
+                console.print("  [bold yellow]Usage:[/bold yellow] set provider <name>")
+                continue
+            if available_providers and requested not in available_providers:
+                console.print(
+                    f"  [bold yellow]Unknown provider:[/bold yellow] {requested} "
+                    f"[dim](choices: {', '.join(available_providers)})[/dim]"
+                )
+                continue
+            if provider_switcher is None:
+                console.print("  [bold red]Provider switching is unavailable.[/bold red]")
+                continue
+            ok, msg = provider_switcher(requested)
+            if ok:
+                console.print(f"  [bold green]Provider switched:[/bold green] {requested}. [dim]{msg}[/dim]")
+            else:
+                console.print(f"  [bold red]Provider switch failed:[/bold red] {msg}")
             continue
 
         # Resolve @file mentions before sending to agent

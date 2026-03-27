@@ -6,6 +6,7 @@ import logging
 import sys
 import json
 import re
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -16,7 +17,13 @@ from config.settings import get_settings
 from agent.agent_loop import run_agent_loop, SYSTEM_PROMPT
 from agent.memory import Memory
 from agent.prompt_builder import build
-from cli.interface import run_repl, display_error, display_tool_call, ask_execution_mode
+from cli.interface import (
+    run_repl,
+    display_error,
+    display_tool_call,
+    ask_execution_mode,
+    ask_model_provider,
+)
 from tools.registry import ToolRegistry
 from tools.executor import ToolExecutor
 from tools.read_file import ReadFileTool
@@ -84,6 +91,42 @@ def _build_provider(settings: dict):
         "No valid API key found for provider '%s'. Using MockProvider.", provider_name
     )
     return MockProvider(content="[MockProvider] Provider not configured. Please set API keys in .env.")
+
+
+def _available_providers_from_env() -> list[str]:
+    """Return providers available based on installed/runtime capabilities."""
+    providers: list[str] = []
+    if os.getenv("GROQ_API_KEY", "").strip():
+        providers.append("groq")
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        providers.append("openai")
+    # Ollama has no API key; expose as option always
+    providers.append("ollama")
+    # stable unique order
+    out: list[str] = []
+    for p in providers:
+        if p not in out:
+            out.append(p)
+    return out
+
+
+def _settings_for_provider(base_settings: dict, provider_name: str) -> dict:
+    """Build runtime settings for the chosen provider without mutating .env."""
+    s = dict(base_settings)
+    s["model_provider"] = provider_name
+    if provider_name == "groq":
+        s["api_key"] = os.getenv("GROQ_API_KEY", "").strip() or None
+        if not s.get("model_name") or ":" in str(s["model_name"]):
+            s["model_name"] = "llama-3.3-70b-versatile"
+    elif provider_name == "openai":
+        s["api_key"] = os.getenv("OPENAI_API_KEY", "").strip() or None
+        if not s.get("model_name") or "llama" in str(s["model_name"]).lower():
+            s["model_name"] = "gpt-4o-mini"
+    elif provider_name == "ollama":
+        s["api_key"] = None
+        if not s.get("model_name") or "llama-" in str(s["model_name"]).lower():
+            s["model_name"] = "llama3.2:3b"
+    return s
 
 
 def _load_mcp_tools(registry: ToolRegistry, settings: dict) -> None:
@@ -211,6 +254,8 @@ def main() -> None:
 
     # Ask user to choose execution mode at startup (overrides .env default)
     safe_mode = ask_execution_mode()
+    available_providers = _available_providers_from_env()
+    chosen_provider = ask_model_provider(available_providers, settings["model_provider"])
 
     # Ensure workspace directory exists
     Path(workspace_root).mkdir(parents=True, exist_ok=True)
@@ -227,7 +272,8 @@ def main() -> None:
     _load_mcp_tools(registry, settings)
 
     executor = ToolExecutor(registry=registry, workspace_root=workspace_root, safe_mode=safe_mode)
-    provider = _build_provider(settings)
+    provider_settings = _settings_for_provider(settings, chosen_provider)
+    provider = _build_provider(provider_settings)
     memory = Memory()
 
     if memory.history:
@@ -266,9 +312,20 @@ def main() -> None:
         plan = _generate_plan(provider, user_input, feedback=feedback)
         return {"requires_plan": True, "plan": plan}
 
+    def switch_provider(provider_name: str) -> tuple[bool, str]:
+        nonlocal provider, provider_settings
+        try:
+            provider_settings = _settings_for_provider(settings, provider_name)
+            provider = _build_provider(provider_settings)
+            return True, f"model={provider_settings['model_name']}"
+        except Exception as exc:
+            return False, str(exc)
+
     run_repl(
         agent_fn,
         planner_fn=planner_fn,
+        provider_switcher=switch_provider,
+        available_providers=available_providers,
         executor=executor,
         safe_mode=safe_mode,
         registry=registry,
