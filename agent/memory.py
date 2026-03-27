@@ -75,6 +75,10 @@ class Memory:
         except Exception as exc:
             logger.warning("Failed to save history: %s", exc)
 
+    def clear(self) -> None:
+        """Clear in-memory history and persist the empty history (if enabled)."""
+        self.history = []
+        self.save()
     def _load(self) -> None:
         """Load history from JSON file if it exists."""
         if not self.persist_path or not self.persist_path.exists():
