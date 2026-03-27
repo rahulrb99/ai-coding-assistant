@@ -79,7 +79,6 @@ def _parse_inline_tool_call(content: str) -> Optional[dict]:
         if params is None:
             params = {}
         return {"id": f"inline_{name}", "name": name, "arguments": params}
-
     candidate: Optional[str] = None
     for pattern in _INLINE_TOOL_PATTERNS:
         m = re.search(pattern, content.strip(), re.MULTILINE)

@@ -359,7 +359,6 @@ def run_repl(
             memory.clear()
             console.print("  [bold green]Cleared memory.[/bold green] [dim](history.json reset)[/dim]")
             continue
-
         # Live mode switching
         cmd = user_input.lower()
         if cmd == "set mode safe":

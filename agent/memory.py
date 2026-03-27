@@ -79,7 +79,6 @@ class Memory:
         """Clear in-memory history and persist the empty history (if enabled)."""
         self.history = []
         self.save()
-
     def _load(self) -> None:
         """Load history from JSON file if it exists."""
         if not self.persist_path or not self.persist_path.exists():
