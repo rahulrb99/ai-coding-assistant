@@ -7,7 +7,9 @@ from typing import List
 
 # Keep the last N messages when history grows too long.
 # System message is always pinned and never truncated.
-MAX_HISTORY_MESSAGES = 20
+# Keep history smaller to reduce token usage on long sessions.
+# Tool outputs are also truncated before being stored.
+MAX_HISTORY_MESSAGES = 8
 
 
 def build(

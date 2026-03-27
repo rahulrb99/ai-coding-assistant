@@ -255,6 +255,117 @@ class TestAgentLoop:
         )
         assert "error" in result.lower()
 
+    def test_retries_on_transient_error(self):
+        """Provider fails twice then succeeds — loop should return final answer."""
+        from agent.agent_loop import run_agent_loop
+        from unittest.mock import patch
+
+        call_count = {"n": 0}
+
+        class _FlakyProvider:
+            def generate(self, messages, tools):
+                call_count["n"] += 1
+                if call_count["n"] < 3:
+                    raise RuntimeError("transient failure")
+                return {"content": "finally worked", "tool_call": None}
+
+        # Patch time.sleep so tests don't actually wait
+        with patch("agent.agent_loop.time.sleep"):
+            result = run_agent_loop(
+                user_input="do something",
+                provider=_FlakyProvider(),
+                executor=_MockExecutor(),
+                memory=_MockMemory(),
+                prompt_builder=_MockPromptBuilder(),
+                tool_registry=_MockRegistry(),
+            )
+
+        assert result == "finally worked"
+        assert call_count["n"] == 3
+
+    def test_rate_limit_error_surfaces_friendly_message(self):
+        """After MAX_RETRIES exhausted on a 429, returns a human-friendly message."""
+        from agent.agent_loop import run_agent_loop, MAX_RETRIES
+        from unittest.mock import patch
+
+        class _RateLimitProvider:
+            def generate(self, messages, tools):
+                raise RuntimeError("Error code: 429 - rate_limit_exceeded. Try again in 60s.")
+
+        with patch("agent.agent_loop.time.sleep"):
+            result = run_agent_loop(
+                user_input="do something",
+                provider=_RateLimitProvider(),
+                executor=_MockExecutor(),
+                memory=_MockMemory(),
+                prompt_builder=_MockPromptBuilder(),
+                tool_registry=_MockRegistry(),
+            )
+
+        assert "rate limit" in result.lower()
+        assert "retry" in result.lower() or "wait" in result.lower()
+
+    def test_inline_tool_call_json_is_executed(self):
+        """If provider returns a tool call JSON blob as content, the loop should execute it."""
+        from agent.agent_loop import run_agent_loop
+
+        provider = _MockProvider([
+            {
+                "content": '<|python_tag|>{"type":"function","name":"read_file","parameters":{"path":"x.py"}}',
+                "tool_call": None,
+            },
+            {"content": "Done.", "tool_call": None},
+        ])
+
+        executor = _MockExecutor(result={"status": "success", "tool": "read_file", "output": "file content"})
+        memory = _MockMemory()
+
+        result = run_agent_loop(
+            user_input="read x.py",
+            provider=provider,
+            executor=executor,
+            memory=memory,
+            prompt_builder=_MockPromptBuilder(),
+            tool_registry=_MockRegistry(),
+        )
+
+        assert result == "Done."
+        assert executor.calls[0] == ("read_file", {"path": "x.py"})
+
+    def test_streamed_inline_tool_call_json_is_executed(self):
+        """If provider streams a tool call JSON blob as text, the loop should execute it."""
+        from agent.agent_loop import run_agent_loop
+
+        class _StreamyProvider(_MockProvider):
+            def stream_response(self, messages):
+                yield '<|python_tag|>{"type":"function","name":"read_file","parameters":{"path":"x.py"}}'
+
+        provider = _StreamyProvider([
+            {"content": "", "tool_call": None},
+            {"content": "Done.", "tool_call": None},
+        ])
+
+        executor = _MockExecutor(result={"status": "success", "tool": "read_file", "output": "file content"})
+        memory = _MockMemory()
+
+        chunks = []
+
+        def _on_chunk(c: str) -> None:
+            chunks.append(c)
+
+        result = run_agent_loop(
+            user_input="read x.py",
+            provider=provider,
+            executor=executor,
+            memory=memory,
+            prompt_builder=_MockPromptBuilder(),
+            tool_registry=_MockRegistry(),
+            on_stream_chunk=_on_chunk,
+        )
+
+        assert result == "Done."
+        assert executor.calls[0] == ("read_file", {"path": "x.py"})
+
     def test_empty_content_returns_empty_string(self):
         from agent.agent_loop import run_agent_loop
 
@@ -345,6 +456,73 @@ class TestCLIInterface:
             run_repl(mock_agent)
 
         assert agent_calls == ["hello"]
+
+    def test_run_repl_switches_provider_command(self):
+        from cli.interface import run_repl
+
+        switched = []
+
+        def switcher(name: str):
+            switched.append(name)
+            return True, "ok"
+
+        inputs = iter(["set provider ollama", "exit"])
+        with patch("cli.interface.console") as mock_console:
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(
+                lambda x, on_stream_chunk=None, on_usage=None: "ok",
+                provider_switcher=switcher,
+                available_providers=["groq", "ollama"],
+            )
+
+        assert switched == ["ollama"]
+
+    def test_run_repl_plan_mode_approved_injects_plan(self):
+        from cli.interface import run_repl
+
+        agent_calls = []
+
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
+            agent_calls.append(user_input)
+            return "ok"
+
+        def planner(user_input, feedback=None):
+            return {"requires_plan": True, "plan": "1. Edit file\n2. Run tests"}
+
+        inputs = iter(["update app", "exit"])
+        with patch("cli.interface.console") as mock_console, patch("cli.interface.Confirm.ask", return_value=True):
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(mock_agent, planner_fn=planner)
+
+        assert len(agent_calls) == 1
+        assert "Approved execution plan" in agent_calls[0]
+        assert "1. Edit file" in agent_calls[0]
+
+    def test_run_repl_plan_mode_rejected_then_replanned(self):
+        from cli.interface import run_repl
+
+        agent_calls = []
+        planner_calls = []
+
+        def mock_agent(user_input, on_stream_chunk=None, on_usage=None):
+            agent_calls.append(user_input)
+            return "ok"
+
+        def planner(user_input, feedback=None):
+            planner_calls.append((user_input, feedback))
+            if feedback:
+                return {"requires_plan": True, "plan": "1. Revised plan"}
+            return {"requires_plan": True, "plan": "1. Initial plan"}
+
+        inputs = iter(["complex task", "change step 1", "exit"])
+        with patch("cli.interface.console") as mock_console, patch("cli.interface.Confirm.ask", side_effect=[False, True]):
+            mock_console.input.side_effect = lambda _: next(inputs)
+            run_repl(mock_agent, planner_fn=planner)
+
+        assert len(planner_calls) == 2
+        assert planner_calls[1][1] == "change step 1"
+        assert len(agent_calls) == 1
+        assert "1. Revised plan" in agent_calls[0]
 
 
 # ---------------------------------------------------------------------------

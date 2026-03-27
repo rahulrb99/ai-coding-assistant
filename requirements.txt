@@ -12,6 +12,7 @@ langchain>=0.1.0
 langchain-community>=0.0.20
 langchain-chroma>=0.1.0
 langchain-huggingface>=0.1.0
+langchain-text-splitters>=0.2.0
 sentence-transformers>=2.2.0
 chromadb>=0.4.0
 # MCP

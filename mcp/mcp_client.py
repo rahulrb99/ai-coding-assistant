@@ -115,10 +115,13 @@ class _MCPServerConnection:
         self._cm_stack = []
 
         if self._transport == "stdio":
+            # Inherit parent process environment by default so spawned MCP servers
+            # can read API keys from .env (e.g. GROQ_API_KEY for custom_rag HyDE).
+            env = self._env if self._env is not None else dict(os.environ)
             params = StdioServerParameters(
                 command=self._command,
                 args=self._args,
-                env=self._env,
+                env=env,
             )
             cm = stdio_client(params)
         elif self._transport == "sse":
@@ -140,7 +143,12 @@ class _MCPServerConnection:
         """Return current session, connecting if necessary. Thread-safe."""
         with self._lock:
             if self._session is None:
-                self._session = _bridge.run(self._connect_async())
+                # Some servers (notably custom_rag) may take a while on first boot
+                # due to heavy imports / model initialization.
+                timeout = 30.0
+                if self._label in ("custom_rag", "filesystem"):
+                    timeout = 180.0
+                self._session = _bridge.run(self._connect_async(), timeout=timeout)
             return self._session
 
     def invalidate(self) -> None:
@@ -173,19 +181,21 @@ class MCPToolWrapper(Tool):
     def __init__(
         self,
         mcp_name: str,
+        exposed_name: str,
         mcp_description: str,
         mcp_schema: Dict[str, Any],
         connection: _MCPServerConnection,
     ) -> None:
         # Instance attributes (not class-level) — required by ToolRegistry.get_tool_schemas()
-        self.name = mcp_name
+        self.name = exposed_name
         self.description = mcp_description
         self.schema = mcp_schema
         self._connection = connection
+        self._remote_name = mcp_name
 
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
         try:
-            output = self._connection.call_tool(self.name, kwargs)
+            output = self._connection.call_tool(self._remote_name, kwargs)
             return self.success(output)
         except TimeoutError as e:
             self._connection.invalidate()
@@ -203,15 +213,21 @@ def _load_server_tools(registry: Any, connection: _MCPServerConnection) -> int:
     """Connect to server, discover tools, register them. Returns count."""
     try:
         session = connection.get_session()
-        result = _bridge.run(session.list_tools())
+        # Allow extra time for servers that do one-time indexing/model downloads on boot.
+        result = _bridge.run(session.list_tools(), timeout=120.0)
         tools = result.tools if hasattr(result, "tools") else result
         count = 0
         for tool in tools:
             tool_name = getattr(tool, "name", "")
             tool_desc = getattr(tool, "description", "")
             tool_schema = getattr(tool, "inputSchema", {}) or {}
+            # Namespace only custom_rag tools so the LLM can refer to them explicitly.
+            exposed_name = tool_name
+            if getattr(connection, "_label", "") == "custom_rag":
+                exposed_name = f"custom_rag_{tool_name}"
             wrapper = MCPToolWrapper(
                 mcp_name=tool_name,
+                exposed_name=exposed_name,
                 mcp_description=tool_desc,
                 mcp_schema=tool_schema,
                 connection=connection,
@@ -219,9 +235,9 @@ def _load_server_tools(registry: Any, connection: _MCPServerConnection) -> int:
             try:
                 registry.register(wrapper)
                 count += 1
-                _log(f"Registered MCP tool '{tool_name}' from server '{connection._label}'")
+                _log(f"Registered MCP tool '{exposed_name}' from server '{connection._label}'")
             except ValueError as e:
-                _warn(f"Skipping tool '{tool_name}' from '{connection._label}': {e}")
+                _warn(f"Skipping tool '{exposed_name}' from '{connection._label}': {e}")
         return count
     except Exception as e:
         _error_log(f"Failed to load tools from server '{connection._label}': {e}")
@@ -313,7 +329,8 @@ def load_tools(registry: Any) -> None:
                 server_label="custom_rag",
                 transport="stdio",
                 command=sys.executable,
-                args=[str(rag_script)],
+                # Use -m so imports resolve (custom_rag_server is a package)
+                args=["-m", "custom_rag_server.main"],
             )
         n = _load_server_tools(registry, rag_conn)
         _log(f"Custom RAG MCP server: {n} tools loaded")
@@ -330,9 +347,32 @@ class MCPClient:
 
     def __init__(self, registry: Any) -> None:
         self.registry = registry
+        # Populated after connect_and_load(): {"server_name": tool_count}
+        self.server_stats: dict = {}
 
     def connect_and_load(self) -> None:
         """Connect to all servers and load tools into registry."""
         _log("MCPClient.connect_and_load() starting")
-        load_tools(self.registry)
+        # Snapshot tool list before loading to compute per-server deltas
+        _before: set = set(self.registry.list_tools()) if hasattr(self.registry, "list_tools") else set()
+
+        # Patch _load_server_tools to capture per-server counts
+        import mcp.mcp_client as _self_mod
+        _orig = _self_mod._load_server_tools
+
+        _stats: dict = {}
+
+        def _tracked(registry: Any, connection: Any) -> int:
+            label = getattr(connection, "_label", "unknown")
+            n = _orig(registry, connection)
+            _stats[label] = n
+            return n
+
+        _self_mod._load_server_tools = _tracked
+        try:
+            load_tools(self.registry)
+        finally:
+            _self_mod._load_server_tools = _orig
+
+        self.server_stats = _stats
         _log("MCPClient.connect_and_load() complete")
