@@ -4,8 +4,6 @@ Terminal REPL with Typer and Rich. Displays tool execution logs and agent respon
 """
 import json
 import re
-import os
-import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -20,34 +18,6 @@ console = Console()
 
 QUIT_COMMANDS = {"exit", "quit", "q"}
 MODE_COMMANDS = {"set mode safe", "set mode auto"}
-
-
-def _select_dropdown(title: str, prompt: str, choices: list[str], default: str) -> str:
-    """
-    Arrow-key dropdown selection (Claude-like) when prompt_toolkit is available.
-    Falls back to Rich Prompt.ask when not available / non-interactive / tests.
-    """
-    # Avoid interactive UI under tests or non-tty
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        return Prompt.ask(prompt, choices=choices, default=default)
-    try:
-        if not (sys.stdin.isatty() and sys.stdout.isatty()):
-            return Prompt.ask(prompt, choices=choices, default=default)
-    except Exception:
-        return Prompt.ask(prompt, choices=choices, default=default)
-
-    try:
-        from prompt_toolkit.shortcuts import radiolist_dialog
-
-        values = [(c, c) for c in choices]
-        result = radiolist_dialog(
-            title=title,
-            text=prompt,
-            values=values,
-        ).run()
-        return result or default
-    except Exception:
-        return Prompt.ask(prompt, choices=choices, default=default)
 
 
 def resolve_at_mentions(user_input: str, workspace_root: Optional[str] = None) -> str:
@@ -231,9 +201,8 @@ def ask_execution_mode() -> bool:
         )
     )
 
-    choice = _select_dropdown(
-        title="Setup",
-        prompt="Choose execution mode",
+    choice = Prompt.ask(
+        "  Mode",
         choices=["auto", "safe"],
         default="auto",
     )
@@ -266,12 +235,7 @@ def ask_model_provider(available: list[str], default_provider: str) -> str:
         f"  [bold cyan]Provider[/bold cyan] [dim](this run only)[/dim] "
         f"[dim]{'/'.join(choices)}[/dim]"
     )
-    provider = _select_dropdown(
-        title="Setup",
-        prompt="Choose provider (this run only)",
-        choices=choices,
-        default=default_provider,
-    )
+    provider = Prompt.ask("  Use provider", choices=choices, default=default_provider)
     console.print(
         f"  [dim]Using provider:[/dim] [bold]{provider}[/bold]. "
         f"[dim]Type [bold]set provider <name>[/bold] anytime to switch.[/dim]\n"
