@@ -18,6 +18,7 @@ console = Console()
 
 QUIT_COMMANDS = {"exit", "quit", "q"}
 MODE_COMMANDS = {"set mode safe", "set mode auto"}
+REPL_COMMANDS = {"/help", "/clear", "/usage", "/stats"}
 
 
 def resolve_at_mentions(user_input: str, workspace_root: Optional[str] = None) -> str:
@@ -128,6 +129,17 @@ def display_usage(usage: dict) -> None:
     total = usage.get("total_tokens", 0)
     console.print(
         f"  [dim]-> {total:,} tokens  "
+        f"({prompt:,} prompt + {completion:,} completion)[/dim]"
+    )
+
+
+def display_session_usage(total_usage: dict) -> None:
+    """Display session-wide token totals."""
+    prompt = total_usage.get("prompt_tokens", 0)
+    completion = total_usage.get("completion_tokens", 0)
+    total = total_usage.get("total_tokens", 0)
+    console.print(
+        f"  [dim]session: {total:,} tokens  "
         f"({prompt:,} prompt + {completion:,} completion)[/dim]"
     )
 
@@ -253,6 +265,8 @@ def display_help(safe_mode: bool = False, registry: Optional[Any] = None) -> Non
         "  [bold]set mode auto[/bold]   — execute all tools automatically",
         "  [bold]set provider <name>[/bold] — switch provider for this run",
         "  [bold]/help[/bold]           — show this help",
+        "  [bold]/clear[/bold]          — clear conversation memory for this session",
+        "  [bold]/usage[/bold]          — show session token totals",
         "  [bold]exit / quit / q[/bold] — quit\n",
         "[bold cyan]Tips:[/bold cyan]",
         "  Use [bold]@filename[/bold] in your prompt to inject a file's contents automatically",
@@ -286,6 +300,7 @@ def run_repl(
     safe_mode: bool = False,
     registry: Optional[Any] = None,
     workspace_root: Optional[str] = None,
+    memory: Optional[Any] = None,
 ) -> None:
     """
     Run the main REPL loop.
@@ -303,12 +318,15 @@ def run_repl(
     display_welcome(safe_mode=safe_mode)
 
     current_safe_mode = safe_mode
+    session_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     while True:
         try:
             user_input = console.input("[bold blue]>[/bold blue] ").strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Goodbye.[/dim]")
+            if session_usage.get("total_tokens", 0):
+                display_session_usage(session_usage)
             break
 
         if not user_input:
@@ -316,11 +334,30 @@ def run_repl(
 
         if user_input.lower() in QUIT_COMMANDS:
             console.print("[dim]Goodbye.[/dim]")
+            if session_usage.get("total_tokens", 0):
+                display_session_usage(session_usage)
             break
 
         # /help command
         if user_input.lower() == "/help":
             display_help(safe_mode=current_safe_mode, registry=registry)
+            continue
+
+        # /usage (or /stats) command
+        if user_input.lower() in {"/usage", "/stats"}:
+            if session_usage.get("total_tokens", 0):
+                display_session_usage(session_usage)
+            else:
+                console.print("  [dim]No token usage recorded yet.[/dim]")
+            continue
+
+        # /clear command
+        if user_input.lower() == "/clear":
+            if memory is None:
+                console.print("  [bold red]/clear unavailable:[/bold red] memory not wired.")
+                continue
+            memory.clear()
+            console.print("  [bold green]Cleared memory.[/bold green] [dim](history.json reset)[/dim]")
             continue
 
         # Live mode switching
@@ -428,6 +465,9 @@ def run_repl(
 
             def _on_usage(usage: dict) -> None:
                 usage_holder.append(usage)
+                session_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                session_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                session_usage["total_tokens"] += usage.get("total_tokens", 0)
 
             response = agent_fn(
                 user_input,
@@ -443,5 +483,6 @@ def run_repl(
 
             if usage_holder:
                 display_usage(usage_holder[0])
+                display_session_usage(session_usage)
         except Exception as exc:
             display_error(str(exc))

@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import time
+import ast
 from typing import Any, Callable, List, Optional
 
 logger = logging.getLogger("AGENT")
@@ -49,6 +50,35 @@ def _parse_inline_tool_call(content: str) -> Optional[dict]:
     """
     if not content:
         return None
+
+    # Some Ollama/local models emit a malformed "tool call" like:
+    #   {(name):search_codebase, (parameters):{"pattern":"foo","glob":"*.py"}}
+    # or with non-JSON dict syntax inside parameters.
+    malformed = re.search(
+        r"\{\s*\(name\)\s*:\s*([a-zA-Z0-9_]+)\s*,\s*\(parameters\)\s*:\s*([\s\S]+?)\s*\}\s*$",
+        content.strip(),
+        re.MULTILINE,
+    )
+    if malformed:
+        name = malformed.group(1).strip()
+        params_text = malformed.group(2).strip()
+        params: Optional[dict] = None
+        # Try JSON first
+        try:
+            parsed = json.loads(params_text)
+            if isinstance(parsed, dict):
+                params = parsed
+        except Exception:
+            # Fall back to Python literal parsing (handles single quotes, True/False/None)
+            try:
+                parsed = ast.literal_eval(params_text)
+                if isinstance(parsed, dict):
+                    params = parsed
+            except Exception:
+                params = None
+        if params is None:
+            params = {}
+        return {"id": f"inline_{name}", "name": name, "arguments": params}
 
     candidate: Optional[str] = None
     for pattern in _INLINE_TOOL_PATTERNS:

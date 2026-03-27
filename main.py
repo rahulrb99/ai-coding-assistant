@@ -344,6 +344,7 @@ def main() -> None:
         safe_mode=safe_mode,
         registry=registry,
         workspace_root=workspace_root,
+        memory=memory,
     )
 
 
