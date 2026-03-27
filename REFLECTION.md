@@ -75,6 +75,39 @@ From testing, **HyDE + Chroma improved retrieval quality and reduced hallucinati
 
 In contrast, **no-RAG** answers are faster and cheaper but noticeably less reliable for domain-specific “what does this API do” questions where exact doc wording matters.
 
+## Model comparison: Ollama llama3.2 vs Claude opus 4.6
+
+We evaluated agent behavior on the same set of representative tasks across both models to understand where capability gaps emerge and where local inference is viable.
+
+### Task correctness
+
+Claude opus 4.6 consistently produced more accurate multi-step plans, correctly identified edge cases (e.g., escaping issues in shell commands, schema mismatches in tool calls), and rarely required follow-up clarification. llama3.2 via Ollama handled simple, well-scoped tasks acceptably but degraded on tasks requiring deeper reasoning — particularly multi-file refactors, tool-call chaining, and tasks requiring the agent to self-correct after a failed tool call.
+
+### Tool-call reliability
+
+Tool-call formatting was noticeably more robust with opus 4.6. llama3.2 more frequently emitted malformed tool calls (e.g., the `{(name):..., (parameters):...}` pattern we added fallback parsing for), which required extra recovery logic and occasionally caused the agent loop to stall. opus 4.6 produced well-formed function calls consistently enough that the fallback path was rarely triggered.
+
+### Plan Mode quality
+
+When Plan Mode was triggered, opus 4.6 produced concise, accurate, immediately actionable plans. llama3.2 plans were often vague or over-specified — either missing key steps or adding unnecessary caveats — and more often required a re-plan iteration before the user would approve.
+
+### Latency and cost
+
+llama3.2 on Ollama ran entirely locally, so cost was zero and privacy was complete. However, throughput was significantly lower (heavily dependent on available RAM and CPU), making multi-iteration agent loops noticeably slow. opus 4.6, while the most expensive provider option, returned responses much faster in practice for anything beyond a single-turn exchange, and the quality gain meant fewer loop iterations overall.
+
+### Practical takeaway
+
+| Dimension | llama3.2 (Ollama) | claude-opus-4-6 |
+|---|---|---|
+| Task correctness | Acceptable for simple tasks | Reliable across complex tasks |
+| Tool-call formatting | Frequently malformed | Consistently correct |
+| Plan quality | Vague / needs re-plan | Concise and actionable |
+| Latency (per turn) | Slow (local hardware-bound) | Fast |
+| Cost | Free (local) | Highest among providers |
+| Privacy | Full (no data leaves machine) | API call to Anthropic |
+
+For interactive development and correctness-critical tasks, opus 4.6 was the clear winner. llama3.2 is viable for quick offline tasks or when cost/privacy constraints make a hosted model impractical, but requires more tolerance for occasional tool-call failures and plan quality variance.
+
 ## LLM provider comparison (Groq vs OpenAI vs Ollama)
 
 We supported multiple providers to compare speed/cost/reliability and to keep the architecture provider-agnostic.
