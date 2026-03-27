@@ -14,7 +14,7 @@ An autonomous command-line coding assistant powered by an LLM. Reads, writes, an
 - **Token usage** — shows prompt + completion tokens after every response
 ---
 ## Requirements
-- Python 3.10+
+- Python 3.10-3.13
 - Node.js 18+ and `npx` (required for MCP filesystem and Tavily servers)
 - A Groq or OpenAI API key (free Groq tier works)
 **Check Node.js:**
@@ -23,6 +23,12 @@ node --version   # should be 18+
 npx --version
 ```
 Install Node.js from https://nodejs.org if not installed.
+
+To run with ollama -
+  Install the package and pull a model
+  pip install ollama
+  ollama pull llama3.2        # Tool calling requires llama3.1+ — the default llama3.2 supports it
+  ollama serve                # if not already running
 ---
 **1. Clone and install dependencies**
 ```bash
