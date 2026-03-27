@@ -14,6 +14,23 @@ logger = logging.getLogger("AGENT")
 MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; doubles each attempt (1 → 2 → 4)
 
+# Limit how much tool output we store in conversation history to reduce token usage.
+_MAX_TOOL_OUTPUT_CHARS = 2500
+_MAX_TOOL_OUTPUT_LINES = 60
+
+
+def _truncate_tool_output(text: str) -> str:
+    if not text:
+        return ""
+    lines = text.splitlines()
+    truncated_lines = lines[:_MAX_TOOL_OUTPUT_LINES]
+    truncated = "\n".join(truncated_lines)
+    if len(truncated) > _MAX_TOOL_OUTPUT_CHARS:
+        truncated = truncated[:_MAX_TOOL_OUTPUT_CHARS]
+    if len(lines) > _MAX_TOOL_OUTPUT_LINES or len(text) > len(truncated):
+        truncated += "\n...[output truncated]..."
+    return truncated
+
 _INLINE_TOOL_PATTERNS = (
     # Some open-source models emit tool calls as a literal JSON blob
     # optionally prefixed by "<|python_tag|>" or similar.
@@ -228,6 +245,7 @@ def run_agent_loop(
 
         result = executor.execute(tool_name, arguments)
         tool_output = result.get("output") or result.get("message") or str(result)
+        tool_output = _truncate_tool_output(str(tool_output))
 
         if on_tool_call:
             on_tool_call(tool_name, arguments, result)

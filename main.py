@@ -217,6 +217,18 @@ def _classify_needs_plan(provider: object, user_input: str) -> bool:
     return bool(data.get("requires_repo_changes")) and bool(data.get("is_multi_step"))
 
 
+def _maybe_repo_change_hint(user_input: str) -> bool:
+    """Cheap prefilter to avoid extra LLM call when clearly not a repo-changing request."""
+    text = user_input.lower()
+    keywords = (
+        "create ", "write ", "edit ", "modify ", "update ",
+        "refactor", "fix ", "add ", "remove ",
+        "run ", "install ", "pip ", "npm ", "pytest", "test ",
+        ".py", ".md", "file", "folder", "directory",
+    )
+    return any(k in text for k in keywords)
+
+
 def _generate_plan(provider: object, user_input: str, feedback: Optional[str] = None) -> str:
     """Generate a concise execution plan for the task."""
     prompt = (
@@ -306,6 +318,8 @@ def main() -> None:
         - classify with LLM (1A)
         - if repo-changing + multi-step, generate plan
         """
+        if not _maybe_repo_change_hint(user_input):
+            return {"requires_plan": False, "plan": ""}
         needs_plan = _classify_needs_plan(provider, user_input)
         if not needs_plan:
             return {"requires_plan": False, "plan": ""}
