@@ -14,9 +14,9 @@ import tempfile
 from pathlib import Path
 
 DEST = Path("langchain_docs")
-REPO = "https://github.com/langchain-ai/langchain.git"
+REPO = "https://github.com/langchain-ai/docs.git"
 # Subfolder(s) to harvest — checked in order; first one that has .md files wins
-_CANDIDATES = ["docs", "libs", "."]
+_CANDIDATES = ["src", "."]
 
 
 def _run(cmd: list, label: str) -> None:
