@@ -1,8 +1,4 @@
-"""
-Prompt Builder — Person 5
-Person 1 calls build(system_prompt, tools, history, user_input).
-Returns messages in OpenAI chat format.
-"""
+"""Assemble OpenAI-format chat messages: system, tools, history, user input."""
 from typing import List
 
 # Keep the last N messages when history grows too long.

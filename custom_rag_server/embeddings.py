@@ -1,7 +1,4 @@
-"""
-Embeddings — Person 5
-sentence-transformers/all-MiniLM-L6-v2
-"""
+"""sentence-transformers/all-MiniLM-L6-v2 embeddings."""
 from typing import List
 from langchain_huggingface import HuggingFaceEmbeddings
 

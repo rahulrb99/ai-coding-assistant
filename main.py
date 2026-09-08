@@ -1,7 +1,4 @@
-"""
-AI Coding Assistant CLI — Main entry point.
-Person 1: Wire everything together.
-"""
+"""Vertex CLI entry point — wires the agent loop, tools, MCP, and Plan Mode."""
 import logging
 import sys
 import json

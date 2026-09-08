@@ -1,7 +1,4 @@
-"""
-Memory — Person 5
-Person 1 calls add_user_message(), add_assistant_message(), get_history().
-"""
+"""Sliding-window conversation memory with optional disk persistence."""
 import json
 import logging
 from pathlib import Path
@@ -18,7 +15,7 @@ class Memory:
     Store conversation history with sliding window.
     Optionally persists to a JSON file so history survives restarts.
 
-    API (Person 1 uses these):
+    API:
         memory.add_user_message(content)
         memory.add_assistant_message(content)
         memory.get_history() -> List[dict]

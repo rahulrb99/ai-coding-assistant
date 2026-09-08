@@ -1,8 +1,4 @@
-"""
-Mocks for parallel development — Person 1
-Use these to implement the Agent Loop before real Provider, Executor, Memory exist.
-See CONTRACTS.md for interface specs.
-"""
+"""Test doubles for the agent loop (provider, executor, memory)."""
 from typing import Any, Dict, List, Optional
 
 

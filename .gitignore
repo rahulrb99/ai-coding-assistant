@@ -29,3 +29,6 @@ Thumbs.db
 chroma_db/
 *.db
 langchain_docs
+# Tests / caches
+.pytest_cache/
+pytest-cache-files-*/

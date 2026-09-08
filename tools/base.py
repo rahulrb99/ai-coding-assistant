@@ -1,7 +1,4 @@
-"""
-Tool interface — Person 2
-All tools must implement this interface.
-"""
+"""Shared tool interface: name, description, schema, execute()."""
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 

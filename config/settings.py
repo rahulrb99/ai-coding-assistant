@@ -1,7 +1,4 @@
-"""
-Config — Person 1
-Load from .env via python-dotenv. Provider-agnostic.
-"""
+"""Load provider-agnostic settings from .env."""
 import os
 from pathlib import Path
 

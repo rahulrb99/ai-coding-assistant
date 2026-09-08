@@ -1,7 +1,4 @@
-"""
-search_codebase tool — Person 3
-Use ripgrep if available, else Python regex.
-"""
+"""Search the workspace with ripgrep if available, otherwise Python regex."""
 from __future__ import annotations
 
 import fnmatch

@@ -1,8 +1,4 @@
-"""
-Tool Executor — Person 2
-Person 1 calls executor.execute(tool_name, arguments).
-Validate, confirm (SAFE_MODE), execute, format result.
-"""
+"""Validate tool calls, enforce workspace paths and Safe Mode, then execute."""
 from pathlib import Path
 
 from rich.console import Console

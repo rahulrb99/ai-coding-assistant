@@ -1,6 +1,4 @@
-"""
-write_file tool — Person 2
-"""
+"""Write a file inside the workspace."""
 from __future__ import annotations
 
 from pathlib import Path

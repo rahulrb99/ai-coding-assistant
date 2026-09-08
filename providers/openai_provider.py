@@ -1,5 +1,4 @@
-"""OpenAI Provider — Person 3
-"""
+"""OpenAI provider — normalizes responses to the shared function-calling format."""
 from __future__ import annotations
 
 import json

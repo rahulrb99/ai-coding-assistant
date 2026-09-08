@@ -1,6 +1,4 @@
-"""Groq Provider — Person 3
-Calls Groq API and normalizes response to the shared format.
-"""
+"""Groq provider — normalizes responses to the shared function-calling format."""
 from __future__ import annotations
 
 import json

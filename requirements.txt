@@ -5,6 +5,7 @@ python-dotenv>=1.0.0
 # LLM providers
 openai>=1.0.0
 groq>=0.4.0
+# Tests: pip install -r requirements-dev.txt
 # Ollama (optional — for local LLM without API key)
 # pip install ollama
 # RAG (custom_rag_server)

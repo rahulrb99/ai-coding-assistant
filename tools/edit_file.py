@@ -1,7 +1,4 @@
-"""
-edit_file tool — Person 2
-Block-based search/replace. Normalized matching: exact first, then whitespace-normalized.
-"""
+"""Block-based search/replace. Exact match first, then whitespace-normalized."""
 from __future__ import annotations
 
 import re

@@ -1,6 +1,4 @@
-"""
-run_shell tool — Person 2
-"""
+"""Run a shell command inside the workspace."""
 from __future__ import annotations
 
 import os

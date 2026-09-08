@@ -1,11 +1,7 @@
 """
-Tests for Person 1 components:
-  - config/settings.py
-  - agent/agent_loop.py
-  - agent/prompt_builder.py
-  - cli/interface.py
+Tests for settings, agent loop, prompt builder, and CLI.
 
-Run: pytest tests/test_person1.py -v
+Run: pytest tests/ -v
 """
 import os
 import sys

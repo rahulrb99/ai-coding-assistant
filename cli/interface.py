@@ -1,7 +1,4 @@
-"""
-CLI Interface — Person 1
-Terminal REPL with Typer and Rich. Displays tool execution logs and agent responses.
-"""
+"""Rich terminal REPL: streaming, tool logs, Plan Mode, and session commands."""
 import json
 import re
 from pathlib import Path

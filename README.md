@@ -1,183 +1,180 @@
-# AI Coding Assistant CLI
-# Vertex — AI Coding Assistant CLI
-Command-line AI coding assistant. Autonomous agent with MCP tool integration.
-An autonomous command-line coding assistant powered by an LLM. Reads, writes, and edits files, runs shell commands, searches your codebase, and retrieves web documentation — all via a ReAct agent loop with MCP tool integration.
----
-## Features
-- **Agentic loop** — ReAct pattern with up to 10 tool-calling iterations per task
-- **Streaming responses** — final answers stream token-by-token in the terminal
-- **Multiple LLM providers** — Groq, OpenAI, Ollama (local)
-- **MCP tool servers** — Filesystem, Tavily web search, Custom RAG (LangChain docs)
-- **Safe / Auto mode** — confirm before write/shell commands or let the agent run freely
-- **Session memory** — conversation history persists across restarts
-- **`@file` mentions** — type `fix @app.py` to inject a file into your prompt
-- **Token usage** — shows prompt + completion tokens after every response
----
-## Requirements
-- Python 3.10-3.13
-- Node.js 18+ and `npx` (required for MCP filesystem and Tavily servers)
-- A Groq or OpenAI API key (free Groq tier works)
-**Check Node.js:**
-```bash
-node --version   # should be 18+
-npx --version
-```
-Install Node.js from https://nodejs.org if not installed.
+# Vertex
 
-To run with ollama -
-  Install the package and pull a model
-  pip install ollama
-  ollama pull llama3.2        # Tool calling requires llama3.1+ — the default llama3.2 supports it
-  ollama serve                # if not already running
----
-**1. Clone and install dependencies**
+[![Tests](https://github.com/rahulrb99/ai-coding-assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/rahulrb99/ai-coding-assistant/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**CLI AI coding assistant** — a ReAct agent that reads and edits your repo, runs shell commands, searches the web, and retrieves docs via MCP. Not a chatbot: it plans, calls tools, and iterates until the task is done.
+
+```
+> create a Streamlit sentiment analyser
+> fix the bug in @app.py
+> search the web for the latest LangChain release
+```
+
+## Demo
+
+[Watch the 10-minute walkthrough](https://drive.google.com/file/d/1HKXA25rdEU3YZ1KBbMusNClehQ0LgDTz/view?usp=sharing) — Plan Mode, file edits, MCP tools, and HyDE RAG.
+
+The Drive file must be **Anyone with the link can view**.
+
+## What it does
+
+| Capability | How |
+|---|---|
+| Agentic loop | ReAct, up to 10 tool-calling iterations per task |
+| Plan Mode | For multi-step repo changes: classify → short plan → you approve (one re-plan if you reject) |
+| Local tools | `read_file`, `write_file`, `edit_file`, `run_shell`, `search_codebase` (ripgrep or regex) |
+| Safety | Workspace path sandbox; Safe Mode confirms before write/shell |
+| Providers | Groq, OpenAI, or Ollama (local), same agent loop |
+| MCP | Filesystem, Tavily web search, custom LangChain-docs RAG (HyDE + Chroma) |
+| Session memory | Sliding window, persisted across restarts |
+| `@file` mentions | `fix @app.py` injects the file into the prompt |
+| Usage | Prompt + completion tokens after each response |
+
+MCP servers are **best-effort**: if Node/`npx` or an API key is missing, Vertex still runs on local tools.
+
+## Architecture
+
+```
+User  →  CLI (Rich REPL, streaming)
+           →  Plan Mode (optional approval)
+           →  Agent loop (ReAct)
+                 →  Provider (Groq / OpenAI / Ollama)
+                 →  Tool executor  →  local tools
+                                  →  MCP tools (filesystem, Tavily, RAG)
+                 →  Memory (truncated history)
+```
+
+The agent loop **never** executes file or shell operations itself. It only decides the next tool call; `ToolExecutor` validates schema, keeps paths inside `WORKSPACE_ROOT`, and applies Safe Mode.
+
+Docs RAG is an **on-demand tool**, not stuffed into every prompt. HyDE generates a hypothetical answer, embeds it with MiniLM, and retrieves from Chroma.
+
+![Task flow](diagrams/sequence_diagram_2_task_flow@3x.png)
+
+## Quick start
+
+**Requirements:** Python 3.10–3.13, a Groq or OpenAI key (or Ollama). Node.js 18+ and `npx` only if you want MCP filesystem / Tavily.
+
 ```bash
-cp .env.example .env
-# Edit .env with your API keys (OPENAI_API_KEY or GROQ_API_KEY)
 git clone https://github.com/rahulrb99/ai-coding-assistant.git
 cd ai-coding-assistant
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-## Run
-**2. Configure environment**
-```bash
 cp .env.example .env
 ```
-Edit `.env` and fill in your API key:
-```env
-MODEL_PROVIDER=groq
-MODEL_NAME=llama-3.3-70b-versatile
-GROQ_API_KEY=your_groq_api_key_here
-TAVILY_API_KEY=your_tavily_api_key_here   # optional but recommended for web search
-WORKSPACE_ROOT=.
-```
-Get a free Groq API key at https://console.groq.com  
-Get a free Tavily API key at https://tavily.com
-**3. Run**
-```bash
-cd ai_agent
-python main.py
-## Custom RAG Server (run separately)
----
-## Usage
-On first launch, choose an execution mode:
-| Mode | Behaviour |
-|------|-----------|
-| `auto` | Agent executes all tools automatically |
-| `safe` | Agent asks for confirmation before write/shell commands |
-Your choice is saved — subsequent runs skip this prompt.
-### Example prompts
-```
-> create a streamlit sentiment analyser app
-> fix the bug in @app.py
-> what is the time complexity of quicksort?
-> search the web for the latest LangChain release
-> write a Python function that reverses a linked list
-> add error handling to @tools/run_shell.py
-```
-### REPL commands
-| Command | Action |
-|---------|--------|
-| `/help` | Show all commands and loaded tools |
-| `set mode safe` | Switch to safe mode |
-| `set mode auto` | Switch to auto mode |
-| `exit` / `quit` | Exit the assistant |
----
-## LLM Providers
-### Groq (default, free tier)
+
+Edit `.env`:
+
 ```env
 MODEL_PROVIDER=groq
 MODEL_NAME=llama-3.3-70b-versatile
 GROQ_API_KEY=your_key
+TAVILY_API_KEY=          # optional, web search
+WORKSPACE_ROOT=.
 ```
-### OpenAI
-```env
-MODEL_PROVIDER=openai
-MODEL_NAME=gpt-4o-mini
-OPENAI_API_KEY=your_key
-```
-### Ollama (local, no API key)
+
+Free Groq key: [console.groq.com](https://console.groq.com). Free Tavily key: [tavily.com](https://tavily.com).
+
 ```bash
-# Install Ollama: https://ollama.com/download
+python main.py
+```
+
+On first launch, pick **safe** (confirm writes/shell) or **auto**, and which provider to use. Preference is saved.
+
+### Ollama (no API key)
+
+```bash
 ollama pull llama3.2
 ollama serve
 ```
+
 ```env
 MODEL_PROVIDER=ollama
 MODEL_NAME=llama3.2
 ```
----
-## MCP Servers
-Three MCP servers load automatically at startup:
-| Server | Purpose | Requirement |
-|--------|---------|-------------|
-| `filesystem` | Read/write/list files | Node.js + npx |
-| `tavily` | Web search & research | `TAVILY_API_KEY` in `.env` |
-| `custom_rag` | LangChain docs retrieval (HyDE) | See below |
-### Custom RAG Server setup (one-time)
+
+Tool calling needs Llama 3.1+ class models. Local models often emit messy tool-call text; Vertex has fallback parsers for that.
+
+### Optional: custom RAG (LangChain docs)
+
 ```bash
-# 1. Download LangChain docs into langchain_docs/ folder
-#    (copy .md files from https://github.com/langchain-ai/langchain/tree/master/docs/docs)
-# 2. Index the docs (runs once, saves to chroma_db/)
-python -m custom_rag_server.main
-# Both langchain_docs/ and chroma_db/ are gitignored — local only
+python custom_rag_server/download_docs.py
 ```
----
-## Running Tests
+
+The MCP client starts `custom_rag_server/main.py` itself. Indexing is lazy so the server does not block startup.
+
+## Usage
+
+```
+> create a streamlit sentiment analyser app
+> fix the bug in @app.py
+> add error handling to @tools/run_shell.py
+> what is the time complexity of quicksort?
+> search the web for the latest LangChain release
+```
+
+| Command | Action |
+|---|---|
+| `/help` | Commands and loaded tools |
+| `/usage` or `/stats` | Session token totals |
+| `/clear` | Clear conversation memory |
+| `set mode safe` / `set mode auto` | Confirmation vs autonomous tools |
+| `set provider groq` | Switch provider this session |
+| `exit` / `quit` | Leave |
+
+## Project layout
+
+```
+main.py                    # CLI entry — wires loop, tools, MCP, Plan Mode
+agent/                     # ReAct loop, memory, prompt builder
+cli/                       # Rich REPL, streaming, Plan Mode UX
+config/                    # .env settings
+providers/                 # Groq, OpenAI, Ollama (normalized function calling)
+tools/                     # Registry, executor, file/shell/search tools
+mcp/                       # MCP client (stdio / SSE, best-effort load)
+custom_rag_server/         # HyDE + Chroma MCP server
+diagrams/                  # Sequence and state diagrams
+tests/                     # Unit tests for agent loop, CLI, tools, Safe Mode
+docs/design/               # Architecture notes and team reflection
+```
+
+Design notes and the original interface contracts live in [`docs/design/`](docs/design/).
+
+## Tests
+
 ```bash
-cd custom_rag_server
-python main.py
-pip install pytest
-pytest tests/test_person1.py -v
+pip install -r requirements-dev.txt
+pytest tests/ -v
 ```
-Expected: **27 passed**
----
-- `ai_agent/` — Main assistant (CLI, agent loop, tools, providers, MCP client)
-- `custom_rag_server/` — Documentation RAG server (LangChain docs, HyDE)
-```
-├── main.py                  # Entry point — wires all components
-├── agent/
-│   ├── agent_loop.py        # ReAct loop (Person 1)
-│   ├── memory.py            # Conversation history with persistence (Person 5)
-│   └── prompt_builder.py    # Assembles LLM messages (Person 5)
-├── cli/
-│   └── interface.py         # Rich REPL, streaming display (Person 1)
-├── config/
-│   └── settings.py          # Loads .env configuration (Person 1)
-├── providers/
-│   ├── base_provider.py     # Abstract LLM interface
-│   ├── groq_provider.py     # Groq API (Person 3)
-│   ├── openai_provider.py   # OpenAI API (Person 3)
-│   └── ollama_provider.py   # Ollama local (Person 3)
-├── tools/
-│   ├── registry.py          # Tool registration and schema export (Person 2)
-│   ├── executor.py          # Validation, safe mode, execution (Person 2)
-│   ├── read_file.py         # (Person 2)
-│   ├── write_file.py        # (Person 2)
-│   ├── edit_file.py         # (Person 2)
-│   ├── run_shell.py         # (Person 2)
-│   └── search_codebase.py   # ripgrep / regex search (Person 2)
-├── mcp/
-│   └── mcp_client.py        # MCP server connections and tool loading (Person 4)
-├── custom_rag_server/
-│   ├── main.py              # MCP server entrypoint (Person 5)
-│   ├── indexer.py           # Document ingestion → Chroma (Person 5)
-│   ├── retriever.py         # HyDE retrieval (Person 5)
-│   └── embeddings.py        # sentence-transformers embeddings (Person 5)
-├── tests/
-│   └── test_person1.py      # Unit tests (27 tests)
-├── .env.example             # Environment variable template
-├── design_document.md       # Architecture and design decisions
-└── CONTRACTS.md             # Cross-person interface contracts
-```
----
+
+CI runs the same **44 tests** on Python 3.11 and 3.12. Tests use mocks for the LLM and cover the agent loop, CLI, settings, workspace path sandbox, and Safe Mode. They do not call live APIs.
+
+## Team
+
+Five-person team. Interfaces were frozen first so work could proceed in parallel.
+
+| Person | Owned |
+|---|---|
+| **Rahul** | Integration, ReAct loop, CLI/streaming, Plan Mode, MCP wiring, robustness |
+| Dhruti | Tool interface, executor, Safe Mode, local file/shell tools |
+| Maya | Provider abstraction (Groq / OpenAI / Ollama) |
+| Thanmay | MCP client and server integration |
+| Mike | Memory, prompt builder, custom RAG server (HyDE + Chroma) |
+
 ## Troubleshooting
-**`ModuleNotFoundError: No module named 'mcp'`**
-```bash
-pip install mcp
-```
-**`npx: command not found`**  
-Install Node.js from https://nodejs.org
-**Groq rate limit (429)**  
-Free tier: 100k tokens/day. Wait for reset or use `MODEL_PROVIDER=openai`.
-**Agent stuck / repeating tool calls**  
-The loop stops after 10 iterations automatically. Try rephrasing the task.
+
+**`ModuleNotFoundError: mcp`** — `pip install -r requirements.txt`
+
+**`npx: command not found`** — install [Node.js 18+](https://nodejs.org). Vertex still runs without MCP.
+
+**Groq 429** — free tier is rate-limited. Switch provider or wait.
+
+**Agent repeating tools** — the loop stops after 10 iterations. Rephrase the task.
+
+**Windows console** — output avoids fancy Unicode so cp1252 terminals do not crash.
+
+## License
+
+[MIT](LICENSE)

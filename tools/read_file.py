@@ -1,6 +1,4 @@
-"""
-read_file tool — Person 2
-"""
+"""Read a file inside the workspace."""
 from __future__ import annotations
 
 from pathlib import Path

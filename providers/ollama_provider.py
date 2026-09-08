@@ -1,8 +1,4 @@
-"""Ollama Provider — Person 3
-Calls a local Ollama instance. No API key required.
-Ollama must be running: https://ollama.com/download
-Default base URL: http://localhost:11434
-"""
+"""Ollama provider (local, no API key). Default: http://localhost:11434"""
 from __future__ import annotations
 
 import json

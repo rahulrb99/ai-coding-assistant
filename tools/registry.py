@@ -1,7 +1,4 @@
-"""
-Tool Registry — Person 2
-Central store for local and MCP tools.
-"""
+"""Registry of local and MCP tools, including JSON schemas for the LLM."""
 from typing import Any, Dict, List, Optional
 
 

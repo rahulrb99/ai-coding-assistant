@@ -1,7 +1,4 @@
-"""
-RAG Retriever — Person 5
-HyDE: generate hypothetical answer, embed, retrieve similar chunks.
-"""
+"""HyDE retrieval: embed a hypothetical answer, then search Chroma."""
 from typing import List
 import os
 from groq import Groq

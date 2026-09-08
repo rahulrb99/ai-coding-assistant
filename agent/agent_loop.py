@@ -1,7 +1,6 @@
 """
-Agent Loop — Person 1
-ReAct pattern. MAX_ITERATIONS = 10.
-Delegates tool execution to Tool Executor (never executes tools directly).
+ReAct agent loop (max 10 iterations).
+Delegates all tool execution to ToolExecutor — never runs tools itself.
 """
 import json
 import logging

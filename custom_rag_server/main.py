@@ -1,7 +1,4 @@
-"""
-Custom RAG MCP Server — Person 5
-Indexes LangChain docs. HyDE. Exposes as MCP server.
-"""
+"""MCP server: LangChain-docs RAG with lazy indexing and HyDE retrieval."""
 import logging
 import os
 import sys

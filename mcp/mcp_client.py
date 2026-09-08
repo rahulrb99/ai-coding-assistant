@@ -1,7 +1,4 @@
-"""
-MCP Client — Person 4
-Connect to MCP servers, discover tools, wrap and register in ToolRegistry.
-"""
+"""Connect to MCP servers, discover tools, and register them on ToolRegistry."""
 import asyncio
 import concurrent.futures
 import logging
@@ -312,7 +309,7 @@ def load_tools(registry: Any) -> None:
         _error_log(f"External resource MCP server setup failed: {e}")
 
     # ------------------------------------------------------------------
-    # Server 3: Custom RAG (Person 5)
+    # Server 3: Custom RAG
     # ------------------------------------------------------------------
     mcp_rag_url = os.environ.get("MCP_RAG_SERVER_URL", "")
 

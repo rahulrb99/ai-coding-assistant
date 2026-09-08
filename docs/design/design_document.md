@@ -81,7 +81,7 @@ Feedback Loop continues
 ## 4. Project Structure
 
 ```
-genaiproject3/
+ai-coding-assistant/
 ├── main.py
 ├── cli/
 │   └── interface.py

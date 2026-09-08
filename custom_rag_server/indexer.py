@@ -1,7 +1,4 @@
-"""
-RAG Indexer — Person 5
-Load LangChain docs, split, embed, store in Chroma.
-"""
+"""Load docs, split, embed, and persist to Chroma."""
 from pathlib import Path
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings

@@ -1,10 +1,10 @@
-﻿# Vertex ΓÇö Frozen Contracts
+﻿# Vertex — Frozen Contracts
 
 These 5 contracts are fixed before implementation. They eliminate cross-person dependencies.
 
 ---
 
-## Contract 1 ΓÇö Tool Interface (Person 2)
+## Contract 1 — Tool Interface
 
 **Defined in:** `tools/base.py`
 
@@ -29,11 +29,11 @@ class Tool:
 
 ---
 
-## Contract 2 ΓÇö Tool Executor API (Person 2)
+## Contract 2 — Tool Executor API
 
 **Defined in:** `tools/executor.py`
 
-**Person 1 calls:**
+**Caller:**
 ```python
 executor.execute(tool_name: str, arguments: dict) -> dict
 ```
@@ -52,11 +52,11 @@ executor.execute(tool_name: str, arguments: dict) -> dict
 
 ---
 
-## Contract 3 ΓÇö Provider Interface (Person 3)
+## Contract 3 — Provider Interface
 
 **Defined in:** `providers/base_provider.py`
 
-**Person 1 calls:**
+**Caller:**
 ```python
 provider.generate(messages: List[dict], tools: List[dict]) -> dict
 ```
@@ -71,11 +71,11 @@ provider.generate(messages: List[dict], tools: List[dict]) -> dict
 
 ---
 
-## Contract 4 ΓÇö Prompt Builder (Person 5)
+## Contract 4 — Prompt Builder
 
 **Defined in:** `agent/prompt_builder.py`
 
-**Person 1 calls:**
+**Caller:**
 ```python
 prompt_builder.build(
     system_prompt: str,
@@ -89,11 +89,11 @@ prompt_builder.build(
 
 ---
 
-## Contract 5 ΓÇö Memory Interface (Person 5)
+## Contract 5 — Memory Interface
 
 **Defined in:** `agent/memory.py`
 
-**Person 1 calls:**
+**Caller:**
 ```python
 memory.add_user_message(content)
 memory.add_assistant_message(content)
@@ -104,7 +104,7 @@ memory.get_history() -> List[dict]
 
 ## Parallel Work with Mocks
 
-Person 1 can implement the Agent Loop using mocks before others finish:
+The agent loop can be implemented against mocks before other layers land:
 
 ```python
 class MockProvider:
